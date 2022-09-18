@@ -1,11 +1,14 @@
 #![allow(trivial_numeric_casts)]
 
 //! Embedding fonts in 2D for Pdf
+extern crate fontdb;
+use self::fontdb::{Query, Weight};
 use lopdf;
-use lopdf::{Stream as LoStream, Dictionary as LoDictionary};
 use lopdf::StringFormat;
+use lopdf::{Dictionary as LoDictionary, Stream as LoStream};
 use owned_ttf_parser::{AsFaceRef as _, Face, OwnedFace};
 use std::collections::BTreeMap;
+use std::fs::File;
 use std::iter::FromIterator;
 use {Error, PdfError};
 
@@ -37,24 +40,118 @@ pub enum BuiltinFont {
     ZapfDingbats,
 }
 
+impl BuiltinFont {
+    fn load(self) -> Result<ExternalFont, Error> {
+        let mut db = fontdb::Database::new();
+        db.load_system_fonts();
+
+        use BuiltinFont::*;
+        //https://wiki.archlinux.org/title/Metric-compatible_fonts
+        let metric_compatible: Vec<&str> = match self {
+            TimesRoman => vec!["Times New Roman", "Liberation Serif", "FreeSerif", "Tinos"],
+            TimesBold => vec![
+                "Times New Roman Bold",
+                "Liberation Serif Bold",
+                "FreeSerif Bold",
+                "Tinos Bold",
+            ],
+            TimesItalic => vec![
+                "Times New Roman Italic",
+                "Liberation Serif Italic",
+                "FreeSerif Italic",
+                "Tinos Italic",
+            ],
+            TimesBoldItalic => vec![
+                "Times New Roman Bold Italic",
+                "Liberation Serif Bold Italic",
+                "FreeSerif Bold Italic",
+                "Tinos Bold Italic",
+            ],
+            Helvetica => vec!["Arial Regular", "Liberation Sans", "FreeSans", "Arimo"],
+            HelveticaBold => vec![
+                "Arial Bold",
+                "Liberation Sans Bold",
+                "FreeSans Bold",
+                "Arimo Bold",
+            ],
+            HelveticaOblique => vec![
+                "Arial Italic",
+                "Liberation Sans Italic",
+                "FreeSans Italic",
+                "Arimo Italic",
+            ],
+            HelveticaBoldOblique => vec![
+                "Arial Bold Italic",
+                "Liberation Sans Bold Italic",
+                "FreeSans Bold Italic",
+                "Arimo Bold Italic",
+            ],
+            Courier => vec!["Courier New", "Liberation Mono", "FreeMono", "Cousine"],
+            CourierOblique => vec![
+                "Courier New Italic",
+                "Liberation Mono Italic",
+                "FreeMono Italic",
+                "Cousine Italic",
+            ],
+            CourierBold => vec![
+                "Courier New Bold",
+                "Liberation Mono Bold",
+                "FreeMono Bold",
+                "Cousine Bold",
+            ],
+            CourierBoldOblique => vec![
+                "Courier New Bold Italic",
+                "Liberation Mono Bold Italic",
+                "FreeMono Bold Italic",
+                "Cousine Bold Italic",
+            ],
+            Symbol => vec!["Symbol"],
+            ZapfDingbats => vec!["ZapfDingbats"],
+        };
+
+        let path = metric_compatible
+            .into_iter()
+            .find_map(|f| -> Option<String> {
+                match db.query(&Query {
+                    families: &[fontdb::Family::Name(f)],
+                    weight: Weight::NORMAL,
+                    ..fontdb::Query::default()
+                }) {
+                    Some(id) => {
+                        let (src, _) = db.face_source(id).unwrap();
+                        if let fontdb::Source::File(ref path) = src {
+                            let str = path.clone().to_str().unwrap().to_string();
+                            return Some(str)
+                        }
+                        None
+                    }
+                    None => None,
+                }
+            });
+            let stream = File::open(path.unwrap()).unwrap();
+
+            ExternalFont::new(stream, 0)
+    }
+}
+
 impl Into<&'static str> for BuiltinFont {
     fn into(self) -> &'static str {
         use BuiltinFont::*;
         match self {
-            TimesRoman              => "Times-Roman",
-            TimesBold               => "Times-Bold",
-            TimesItalic             => "Times-Italic",
-            TimesBoldItalic         => "Times-BoldItalic",
-            Helvetica               => "Helvetica",
-            HelveticaBold           => "Helvetica-Bold",
-            HelveticaOblique        => "Helvetica-Oblique",
-            HelveticaBoldOblique    => "Helvetica-BoldOblique",
-            Courier                 => "Courier",
-            CourierOblique          => "Courier-Oblique",
-            CourierBold             => "Courier-Bold",
-            CourierBoldOblique      => "Courier-BoldOblique",
-            Symbol                  => "Symbol",
-            ZapfDingbats            => "ZapfDingbats",
+            TimesRoman => "Times-Roman",
+            TimesBold => "Times-Bold",
+            TimesItalic => "Times-Italic",
+            TimesBoldItalic => "Times-BoldItalic",
+            Helvetica => "Helvetica",
+            HelveticaBold => "Helvetica-Bold",
+            HelveticaOblique => "Helvetica-Oblique",
+            HelveticaBoldOblique => "Helvetica-BoldOblique",
+            Courier => "Courier",
+            CourierOblique => "Courier-Oblique",
+            CourierBold => "Courier-Bold",
+            CourierBoldOblique => "Courier-BoldOblique",
+            Symbol => "Symbol",
+            ZapfDingbats => "ZapfDingbats",
         }
     }
 }
@@ -110,9 +207,7 @@ pub enum TextRenderingMode {
 }
 
 impl Into<i64> for TextRenderingMode {
-    fn into(self)
-    -> i64
-    {
+    fn into(self) -> i64 {
         use TextRenderingMode::*;
         match self {
             Fill => 0,
@@ -128,7 +223,6 @@ impl Into<i64> for TextRenderingMode {
 }
 
 impl ExternalFont {
-
     /// Creates a new font. The `index` is used for naming / identifying the font
     ///
     /// This method uses [`owned_ttf_parser`][] to parse the font data.  If you want to use a different
@@ -136,8 +230,9 @@ impl ExternalFont {
     ///
     /// [`owned_ttf_parser`]: https://docs.rs/owned_ttf_parser/latest/owned_ttf_parser/
     /// [`with_font_data`]: #method.with_font_data
-    pub fn new<R>(mut font_stream: R, font_index: usize)
-    -> Result<Self, Error> where R: ::std::io::Read
+    pub fn new<R>(mut font_stream: R, font_index: usize) -> Result<Self, Error>
+    where
+        R: ::std::io::Read,
     {
         // read font from stream and parse font metrics
         let mut buf = Vec::<u8>::new();
@@ -160,9 +255,7 @@ impl ExternalFont {
     }
 
     /// Takes the font and adds it to the document and consumes the font
-    pub(crate) fn into_with_document(self, doc: &mut lopdf::Document)
-    -> LoDictionary
-    {
+    pub(crate) fn into_with_document(self, doc: &mut lopdf::Document) -> LoDictionary {
         use lopdf::Object;
         use lopdf::Object::*;
 
@@ -172,10 +265,9 @@ impl ExternalFont {
         let face_metrics = self.font_data.font_metrics();
 
         let font_stream = LoStream::new(
-            LoDictionary::from_iter(vec![
-                ("Length1", Integer(self.font_bytes.len() as i64)),
-                ]),
-            self.font_bytes)
+            LoDictionary::from_iter(vec![("Length1", Integer(self.font_bytes.len() as i64))]),
+            self.font_bytes,
+        )
         .with_compression(false); /* important! font stream must not be compressed! */
 
         // Begin setting required font attributes
@@ -220,8 +312,14 @@ impl ExternalFont {
                 }
 
                 total_width += glyph_metrics.width;
-                cmap.insert(glyph_id as u32,
-                            (c as u32, glyph_metrics.width as u32, glyph_metrics.height as u32));
+                cmap.insert(
+                    glyph_id as u32,
+                    (
+                        c as u32,
+                        glyph_metrics.width as u32,
+                        glyph_metrics.height as u32,
+                    ),
+                );
             }
         }
 
@@ -235,7 +333,7 @@ impl ExternalFont {
         // Since the glyph IDs are sequential, all we really have to do is to enumerate the vector
         // and create buckets of 100 / rest to 256 if needed
 
-        let mut cur_first_bit: u16 = 0_u16;     // current first bit of the glyph id (0x10 or 0x12) for example
+        let mut cur_first_bit: u16 = 0_u16; // current first bit of the glyph id (0x10 or 0x12) for example
 
         let mut all_cmap_blocks = Vec::new();
 
@@ -243,7 +341,6 @@ impl ExternalFont {
             let mut current_cmap_block = Vec::new();
 
             for (glyph_id, unicode_width_tuple) in &cmap {
-
                 if (*glyph_id >> 8) as u16 != cur_first_bit || current_cmap_block.len() >= 100 {
                     // end the current (beginbfchar endbfchar) block
                     all_cmap_blocks.push(current_cmap_block.clone());
@@ -254,14 +351,15 @@ impl ExternalFont {
                 let (unicode, width, _) = *unicode_width_tuple;
                 current_cmap_block.push((*glyph_id, unicode));
                 widths.push((*glyph_id, width));
-            };
+            }
 
             all_cmap_blocks.push(current_cmap_block);
         }
 
         let cid_to_unicode_map = generate_cid_to_unicode_map(face_name.clone(), all_cmap_blocks);
 
-        let cid_to_unicode_map_stream = LoStream::new(LoDictionary::new(), cid_to_unicode_map.as_bytes().to_vec());
+        let cid_to_unicode_map_stream =
+            LoStream::new(LoDictionary::new(), cid_to_unicode_map.as_bytes().to_vec());
         let cid_to_unicode_map_stream_id = doc.add_object(cid_to_unicode_map_stream);
 
         // encode widths / heights so that they fit into what PDF expects
@@ -296,29 +394,44 @@ impl ExternalFont {
         widths_list.push(Array(current_width_vec.drain(..).collect()));
 
         let w = {
-            if self.vertical_writing { ("W2",  Array(widths_list)) }
-            else { ("W",  Array(widths_list)) }
+            if self.vertical_writing {
+                ("W2", Array(widths_list))
+            } else {
+                ("W", Array(widths_list))
+            }
         };
 
         // default width for characters
         let dw = {
-            if self.vertical_writing { ("DW2", Integer(1000)) }
-            else { ("DW", Integer(1000)) }
+            if self.vertical_writing {
+                ("DW2", Integer(1000))
+            } else {
+                ("DW", Integer(1000))
+            }
         };
 
         let mut desc_fonts = LoDictionary::from_iter(vec![
             ("Type", Name("Font".into())),
             ("Subtype", Name("CIDFontType2".into())),
             ("BaseFont", Name(face_name.clone().into())),
-            ("CIDSystemInfo", Dictionary(LoDictionary::from_iter(vec![
+            (
+                "CIDSystemInfo",
+                Dictionary(LoDictionary::from_iter(vec![
                     ("Registry", String("Adobe".into(), StringFormat::Literal)),
                     ("Ordering", String("Identity".into(), StringFormat::Literal)),
                     ("Supplement", Integer(0)),
-            ]))),
-            w, dw,
+                ])),
+            ),
+            w,
+            dw,
         ]);
 
-        let font_bbox = vec![ Integer(0), Integer(max_height as i64), Integer(total_width as i64), Integer(max_height as i64) ];
+        let font_bbox = vec![
+            Integer(0),
+            Integer(max_height as i64),
+            Integer(total_width as i64),
+            Integer(max_height as i64),
+        ];
         font_descriptor_vec.push(("FontFile2".into(), Reference(doc.add_object(font_stream))));
 
         // although the following entry is technically not needed, Adobe Reader needs it
@@ -328,7 +441,10 @@ impl ExternalFont {
 
         desc_fonts.set("FontDescriptor", Reference(font_descriptor_vec_id));
 
-        font_vec.push(("DescendantFonts".into(), Array(vec![Dictionary(desc_fonts)])));
+        font_vec.push((
+            "DescendantFonts".into(),
+            Array(vec![Dictionary(desc_fonts)]),
+        ));
         font_vec.push(("ToUnicode".into(), Reference(cid_to_unicode_map_stream_id)));
 
         LoDictionary::from_iter(font_vec)
@@ -341,10 +457,13 @@ type CmapBlock = Vec<(GlyphId, UnicodeCodePoint)>;
 
 /// Generates a CMAP (character map) from valid cmap blocks
 fn generate_cid_to_unicode_map(face_name: String, all_cmap_blocks: Vec<CmapBlock>) -> String {
+    let mut cid_to_unicode_map =
+        format!(include_str!("../assets/gid_to_unicode_beg.txt"), face_name);
 
-    let mut cid_to_unicode_map = format!(include_str!("../assets/gid_to_unicode_beg.txt"), face_name);
-
-    for cmap_block in all_cmap_blocks.into_iter().filter(|block| !block.is_empty() || block.len() < 100) {
+    for cmap_block in all_cmap_blocks
+        .into_iter()
+        .filter(|block| !block.is_empty() || block.len() < 100)
+    {
         cid_to_unicode_map.push_str(format!("{} beginbfchar\r\n", cmap_block.len()).as_str());
         for (glyph_id, unicode) in cmap_block {
             cid_to_unicode_map.push_str(format!("<{:04x}> <{:04x}>\n", glyph_id, unicode).as_str());
@@ -383,12 +502,11 @@ pub struct DirectFontRef {
 
 impl IndirectFontRef {
     /// Creates a new IndirectFontRef from an index
-    pub fn new<S>(name: S)
-    -> Self where S: Into<String>
+    pub fn new<S>(name: S) -> Self
+    where
+        S: Into<String>,
     {
-        Self {
-            name: name.into(),
-        }
+        Self { name: name.into() }
     }
 }
 
@@ -399,18 +517,13 @@ pub struct FontList {
 }
 
 impl FontList {
-
     /// Creates a new FontList
-    pub fn new()
-    -> Self
-    {
+    pub fn new() -> Self {
         Self::default()
     }
 
     /// Adds a font to the FontList
-    pub fn add_font(&mut self, font_ref: IndirectFontRef, font: DirectFontRef)
-    -> IndirectFontRef
-    {
+    pub fn add_font(&mut self, font_ref: IndirectFontRef, font: DirectFontRef) -> IndirectFontRef {
         self.fonts.insert(font_ref.clone(), font);
         font_ref
     }
@@ -418,9 +531,7 @@ impl FontList {
     /// Turns an indirect font reference into a direct one
     /// (Warning): clones the direct font reference
     #[inline]
-    pub fn get_font(&self, font: &IndirectFontRef)
-    -> Option<DirectFontRef>
-    {
+    pub fn get_font(&self, font: &IndirectFontRef) -> Option<DirectFontRef> {
         let font_ref = self.fonts.get(font);
         if let Some(r) = font_ref {
             Some(r.clone())
@@ -431,34 +542,34 @@ impl FontList {
 
     /// Returns the number of fonts currenly in use
     #[inline]
-    pub fn len(&self)
-    -> usize
-    {
+    pub fn len(&self) -> usize {
         self.fonts.len()
     }
 
     /// Returns if the font list is empty
     #[inline]
-    pub fn is_empty(&self)
-    -> bool
-    {
+    pub fn is_empty(&self) -> bool {
         self.fonts.is_empty()
     }
 
     /// Converts the fonts into a dictionary
-    pub(crate) fn into_with_document(self, doc: &mut lopdf::Document)
-    ->lopdf::Dictionary
-    {
+    pub(crate) fn into_with_document(self, doc: &mut lopdf::Document) -> lopdf::Dictionary {
         let mut font_dict = lopdf::Dictionary::new();
 
         for (indirect_ref, direct_font_ref) in self.fonts {
             let font_dict_collected = match direct_font_ref.data {
                 Font::ExternalFont(font) => font.into_with_document(doc),
-                Font::BuiltinFont(font)  => font.into(),
+                Font::BuiltinFont(font) => font.into(),
             };
 
-            doc.objects.insert(direct_font_ref.inner_obj, lopdf::Object::Dictionary(font_dict_collected));
-            font_dict.set(indirect_ref.name,lopdf::Object::Reference(direct_font_ref.inner_obj));
+            doc.objects.insert(
+                direct_font_ref.inner_obj,
+                lopdf::Object::Dictionary(font_dict_collected),
+            );
+            font_dict.set(
+                indirect_ref.name,
+                lopdf::Object::Reference(direct_font_ref.inner_obj),
+            );
         }
 
         font_dict
@@ -542,9 +653,7 @@ impl FontData for TtfFace {
     }
 
     fn glyph_id(&self, c: char) -> Option<u16> {
-        self.face()
-            .glyph_index(c)
-            .map(|id| id.0)
+        self.face().glyph_index(c).map(|id| id.0)
     }
 
     fn glyph_ids(&self) -> std::collections::HashMap<u16, char> {
@@ -552,7 +661,8 @@ impl FontData for TtfFace {
             .face()
             .character_mapping_subtables()
             .filter(|s| s.is_unicode());
-        let mut map = std::collections::HashMap::with_capacity(self.face().number_of_glyphs().into());
+        let mut map =
+            std::collections::HashMap::with_capacity(self.face().number_of_glyphs().into());
         for subtable in subtables {
             subtable.codepoints(|c| {
                 use std::convert::TryFrom as _;
@@ -571,9 +681,11 @@ impl FontData for TtfFace {
         let glyph_id = owned_ttf_parser::GlyphId(glyph_id);
         if let Some(width) = self.face().glyph_hor_advance(glyph_id) {
             let width = width as u32;
-            let height = self.face().glyph_bounding_box(glyph_id).map(|bbox| {
-                bbox.y_max - bbox.y_min - self.face().descender()
-            }).unwrap_or(1000) as u32;
+            let height = self
+                .face()
+                .glyph_bounding_box(glyph_id)
+                .map(|bbox| bbox.y_max - bbox.y_min - self.face().descender())
+                .unwrap_or(1000) as u32;
             Some(GlyphMetrics { width, height })
         } else {
             None
