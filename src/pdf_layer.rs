@@ -8,8 +8,7 @@ use rayon::str::ParallelString;
 use std::rc::Weak;
 use std::{cell::RefCell, collections::HashMap};
 
-use crate::PageMargins;
-use crate::text::TextAlignment;
+use crate::{PageMargins, TextAlignment};
 use {
     BlendMode, Color, CurTransMat, ExtendedGraphicsStateBuilder, Font, ImageXObject,
     IndirectFontRef, Line, LineCapStyle, LineDashPattern, LineJoinStyle, PdfColor, PdfDocument,
@@ -496,7 +495,8 @@ impl PdfLayerReference {
         alignment: TextAlignment,
         hyphenation: bool,
     ) -> ()
-
+    where
+        S: Into<String>,
     {
         let margins = PageMargins::symmetrical(0.0, 50.0);
         let size = font_size as f32;
