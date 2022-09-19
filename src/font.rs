@@ -3,6 +3,7 @@
 //! Embedding fonts in 2D for Pdf
 extern crate fontdb;
 use self::fontdb::{Query, Weight};
+use fontdb::Style;
 use lopdf;
 use lopdf::StringFormat;
 use lopdf::{Dictionary as LoDictionary, Stream as LoStream};
@@ -48,63 +49,15 @@ impl BuiltinFont {
         use BuiltinFont::*;
         //https://wiki.archlinux.org/title/Metric-compatible_fonts
         let metric_compatible: Vec<&str> = match self {
-            TimesRoman => vec!["Times New Roman", "Liberation Serif", "FreeSerif", "Tinos"],
-            TimesBold => vec![
-                "Times New Roman Bold",
-                "Liberation Serif Bold",
-                "FreeSerif Bold",
-                "Tinos Bold",
-            ],
-            TimesItalic => vec![
-                "Times New Roman Italic",
-                "Liberation Serif Italic",
-                "FreeSerif Italic",
-                "Tinos Italic",
-            ],
-            TimesBoldItalic => vec![
-                "Times New Roman Bold Italic",
-                "Liberation Serif Bold Italic",
-                "FreeSerif Bold Italic",
-                "Tinos Bold Italic",
-            ],
-            Helvetica => vec!["Arial Regular", "Liberation Sans", "FreeSans", "Arimo"],
-            HelveticaBold => vec![
-                "Arial Bold",
-                "Liberation Sans Bold",
-                "FreeSans Bold",
-                "Arimo Bold",
-            ],
-            HelveticaOblique => vec![
-                "Arial Italic",
-                "Liberation Sans Italic",
-                "FreeSans Italic",
-                "Arimo Italic",
-            ],
-            HelveticaBoldOblique => vec![
-                "Arial Bold Italic",
-                "Liberation Sans Bold Italic",
-                "FreeSans Bold Italic",
-                "Arimo Bold Italic",
-            ],
-            Courier => vec!["Courier New", "Liberation Mono", "FreeMono", "Cousine"],
-            CourierOblique => vec![
-                "Courier New Italic",
-                "Liberation Mono Italic",
-                "FreeMono Italic",
-                "Cousine Italic",
-            ],
-            CourierBold => vec![
-                "Courier New Bold",
-                "Liberation Mono Bold",
-                "FreeMono Bold",
-                "Cousine Bold",
-            ],
-            CourierBoldOblique => vec![
-                "Courier New Bold Italic",
-                "Liberation Mono Bold Italic",
-                "FreeMono Bold Italic",
-                "Cousine Bold Italic",
-            ],
+            TimesRoman | TimesBold | TimesItalic | TimesBoldItalic => {
+                vec!["Times New Roman", "Liberation Serif", "FreeSerif", "Tinos"]
+            }
+            Helvetica | HelveticaBold | HelveticaOblique | HelveticaBoldOblique => {
+                vec!["Arial Regular", "Liberation Sans", "FreeSans", "Arimo"]
+            }
+            Courier | CourierBold | CourierOblique | CourierBoldOblique => {
+                vec!["Courier New", "Liberation Mono", "FreeMono", "Cousine"]
+            }
             Symbol => vec!["Symbol"],
             ZapfDingbats => vec!["ZapfDingbats"],
         };
@@ -112,25 +65,42 @@ impl BuiltinFont {
         let path = metric_compatible
             .into_iter()
             .find_map(|f| -> Option<String> {
+                let weight = match f.contains("Bold") {
+                    true => Weight::BOLD,
+                    false => Weight::NORMAL,
+                };
+                let style = match f.contains("Italic") || f.contains("Oblique") {
+                    false => Style::Normal,
+                    true => {
+                        if f.contains("Italic") {
+                            Style::Italic
+                        }
+                        else {
+                            Style::Oblique
+                        }
+                    }
+                };
+
                 match db.query(&Query {
                     families: &[fontdb::Family::Name(f)],
-                    weight: Weight::NORMAL,
+                    weight,
+                    style,
                     ..fontdb::Query::default()
                 }) {
                     Some(id) => {
                         let (src, _) = db.face_source(id).unwrap();
                         if let fontdb::Source::File(ref path) = src {
                             let str = path.clone().to_str().unwrap().to_string();
-                            return Some(str)
+                            return Some(str);
                         }
                         None
                     }
                     None => None,
                 }
             });
-            let stream = File::open(path.unwrap()).unwrap();
+        let stream = File::open(path.unwrap()).unwrap();
 
-            ExternalFont::new(stream, 0)
+        ExternalFont::new(stream, 0)
     }
 }
 
@@ -708,5 +678,36 @@ impl<T: FontData + Clone + 'static> FontDataClone for T {
 impl Clone for Box<dyn FontData> {
     fn clone(&self) -> Box<dyn FontData> {
         self.clone_font_data()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::BuiltinFont;
+
+    #[test]
+    fn it_works() {
+        let font = BuiltinFont::TimesRoman.load().unwrap().font_bytes;
+        let ff = fontdue::Font::from_bytes(font, fontdue::FontSettings::default()).unwrap();
+        ff.rasterize('c', 10.0);
+        println!("{}", ff.rasterize('c', 10.0).0.advance_width);
+    }
+
+    #[test]
+    fn net() {
+        let font = BuiltinFont::Courier
+            .load()
+            .unwrap()
+            .font_data
+            .glyph_id('c')
+            .unwrap();
+        let metrics = BuiltinFont::Courier
+            .load()
+            .unwrap()
+            .font_data
+            .glyph_metrics(font)
+            .unwrap();
+        let met = metrics.width;
+        println!("{met}");
     }
 }
