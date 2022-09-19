@@ -16,9 +16,18 @@ macro_rules! impl_partialeq {
     };
 }
 
-/// Scale in millimeter
+/// Scale in millimeters
 #[derive(Debug, Default, Copy, Clone, PartialOrd)]
 pub struct Mm(pub f64);
+
+/// Scale in inches
+#[derive(Debug, Default, Copy, Clone)]
+pub struct Inches(pub f64);
+impl From<Inches> for f64 {
+    fn from(value: Inches) -> f64 {
+        value.0 * 72.0
+    }
+}
 
 impl Mm {
     pub fn into_pt(&self) -> Pt {
@@ -27,17 +36,30 @@ impl Mm {
     }
 }
 
+
+impl From<Mm> for f64 {
+    fn from(value: Mm) -> f64 {
+        value.0 * 2.834_646_f64
+    }
+}
+
 impl From<Pt> for Mm {
     fn from(value: Pt) -> Mm {
         Mm(value.0 * 0.352_778_f64)
     }
 }
-
 impl_partialeq!(Mm);
 
 /// Scale in point
 #[derive(Debug, Default, Copy, Clone, PartialOrd)]
 pub struct Pt(pub f64);
+
+impl From<Pt> for f64 {
+    fn from(value: Pt) -> f64 {
+        value.0
+    }
+}
+
 
 impl From<Mm> for Pt {
     fn from(value: Mm) -> Pt {
