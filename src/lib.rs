@@ -340,7 +340,10 @@ extern crate pdf_writer;
 extern crate time;
 #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 extern crate js_sys;
-
+extern crate rayon;
+extern  crate fontdue;
+extern crate fontdb;
+extern crate hyphenation;
 pub mod color;
 pub mod ctm;
 pub mod date;
@@ -361,6 +364,7 @@ pub mod pdf_metadata;
 pub mod pdf_page;
 pub mod pdf_resources;
 pub mod point;
+pub mod text;
 pub mod scale;
 #[cfg(feature = "svg")]
 pub mod svg;
