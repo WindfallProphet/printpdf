@@ -496,7 +496,7 @@ impl PdfLayerReference {
         hyphenation: bool,
     ) -> ()
     where
-        S: Into<String>,
+        S: Into<String> + rayon::prelude::ParallelString,
     {
         let margins = PageMargins::symmetrical(0.0, 50.0);
         let size = font_size as f32;
