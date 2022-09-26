@@ -1,19 +1,32 @@
 //! PDF layer management. Layers can contain referenced or real content.
 use glob_defines::OP_PATH_STATE_SET_LINE_WIDTH;
-use hyphenation::{Standard, Language, Load, Hyphenator};
+use hyphenation::{Hyphenator, Language, Load, Standard};
 use indices::{PdfLayerIndex, PdfPageIndex};
 use lopdf::content::Operation;
-use rayon::prelude::{ParallelIterator, IntoParallelRefIterator};
+use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use rayon::str::ParallelString;
 use std::rc::Weak;
 use std::{cell::RefCell, collections::HashMap};
 
-use crate::{PageMargins, TextAlignment};
+use crate::operation::PdfOperation;
+use crate::{
+    font, BuiltinFont, DirectFontRef, ExternalFont, FontList, PageDimensions, PageMargins,
+    PaperSize,
+};
 use {
     BlendMode, Color, CurTransMat, ExtendedGraphicsStateBuilder, Font, ImageXObject,
     IndirectFontRef, Line, LineCapStyle, LineDashPattern, LineJoinStyle, PdfColor, PdfDocument,
     TextMatrix, TextRenderingMode, XObject, XObjectRef,
 };
+
+#[derive(Copy, Clone)]
+pub enum TextAlignment {
+    Left,
+    Right,
+    Centre,
+    Justify,
+}
+
 /// One layer of PDF data
 #[derive(Debug, Clone)]
 pub struct PdfLayer {
@@ -33,6 +46,7 @@ pub struct PdfLayerReference {
     pub page: PdfPageIndex,
     /// The index of the layer this layer has (inside the page)
     pub layer: PdfLayerIndex,
+    pub margins: PageMargins,
 }
 
 impl PdfLayer {
@@ -48,7 +62,6 @@ impl PdfLayer {
         }
     }
 }
-
 impl Into<lopdf::Stream> for PdfLayer {
     fn into(self) -> lopdf::Stream {
         use lopdf::{Dictionary, Stream};
@@ -98,14 +111,14 @@ impl PdfLayerReference {
     /// You have to make sure to call `end_text_section` afterwards
     #[inline]
     pub fn begin_text_section(&self) -> () {
-        self.add_operation(Operation::new("BT", vec![]));
+        self.add_operation(PdfOperation::BeginText {});
     }
 
     /// Ends a new text section
     /// Only valid if `begin_text_section` has been called
     #[inline]
     pub fn end_text_section(&self) -> () {
-        self.add_operation(Operation::new("ET", vec![]));
+        self.add_operation(PdfOperation::EndText {});
     }
 
     /// Set the current fill color for the layer
@@ -142,11 +155,11 @@ impl PdfLayerReference {
         self.save_graphics_state();
 
         // do transformations to XObject
-        if transformations.len() > 0 {
+        if !transformations.is_empty() {
             let mut t = CurTransMat::Identity;
-            for q in transformations {
-                t = CurTransMat::Raw(CurTransMat::combine_matrix(t.into(), q.clone().into()));
-            }
+            let _ = transformations.iter().map(|q| {
+                t = CurTransMat::Raw(CurTransMat::combine_matrix(t.into(), (*q).into()));
+            });
             self.add_operation(t);
         }
 
@@ -376,15 +389,13 @@ impl PdfLayerReference {
         use lopdf::Object::*;
         use lopdf::StringFormat::Hexadecimal;
 
-        let mut list = Vec::new();
-
-        for (pos, codepoint) in codepoints {
+        let list = codepoints.into_iter().map(|(pos, codepoint)| {
             if pos != 0 {
-                list.push(Integer(pos));
+                return Integer(pos)
             }
             let bytes = codepoint.to_be_bytes().to_vec();
-            list.push(String(bytes, Hexadecimal));
-        }
+            String(bytes, Hexadecimal)
+        }).collect();
 
         let doc = self.document.upgrade().unwrap();
         let mut doc = doc.borrow_mut();
@@ -392,7 +403,16 @@ impl PdfLayerReference {
             .operations
             .push(Operation::new("TJ", vec![Array(list)]));
     }
-
+    pub fn page_dimension(&self) -> PageDimensions {
+        let doc = self.document.upgrade().unwrap();
+        let page_id = self.page.0;
+        let page = &doc.borrow().pages;
+        let s = &page[page_id];
+        PageDimensions {
+            width: s.width,
+            height: s.height,
+        }
+    }
     /// Add text to the file at the current position
     ///
     /// If the given font is a built-in font and the given text contains characters that are not
@@ -424,15 +444,8 @@ impl PdfLayerReference {
 
         let bytes: Vec<u8> = {
             if let Font::ExternalFont(face_direct_ref) = doc.fonts.get_font(font).unwrap().data {
-                let mut list_gid = Vec::<u16>::new();
                 let font = &face_direct_ref.font_data;
-
-                for ch in text.chars() {
-                    if let Some(glyph_id) = font.glyph_id(ch) {
-                        list_gid.push(glyph_id);
-                    }
-                }
-
+                let list_gid: Vec<u16> = text.chars().filter_map(|ch| font.glyph_id(ch)).collect();
                 list_gid
                     .iter()
                     .flat_map(|x| vec![(x >> 8) as u8, (x & 255) as u8])
@@ -448,7 +461,12 @@ impl PdfLayerReference {
             .operations
             .push(Operation::new("Tj", vec![String(bytes, Hexadecimal)]));
     }
-
+    pub fn get_fonts(&self, font: &IndirectFontRef) -> DirectFontRef {
+        let doc = self.document.upgrade().unwrap();
+        let x = doc.borrow();
+        let fonts = &x.fonts;
+        fonts.get_font(font).unwrap()
+    }
     /// Saves the current graphic state
     #[inline]
     pub fn save_graphics_state(&self) {
@@ -458,7 +476,7 @@ impl PdfLayerReference {
     /// Restores the previous graphic state
     #[inline]
     pub fn restore_graphics_state(&self) {
-        self.add_operation(Operation::new("Q", Vec::new()));
+        self.add_operation(PdfOperation::RestoreGraphicsState {});
     }
 
     /// Add text to the file, x and y are measure in millimeter from the bottom left corner
@@ -486,51 +504,39 @@ impl PdfLayerReference {
     }
 
     #[inline]
-    pub fn write_paragraph<S>(
+    pub fn write_paragraph(
         &self,
-        text: S,
+        text: &str,
         font: &IndirectFontRef,
         font_size: f64,
-        pos: Option<(f64, f64)>,
+        pos: (f64, f64),
         alignment: TextAlignment,
         hyphenation: bool,
-    ) -> ()
-    where
-        S: Into<String> + rayon::prelude::ParallelString,
-    {
-        let margins = PageMargins::symmetrical(0.0, 50.0);
+    ) {
+        let margins = PageMargins::symmetrical(0.0, pos.0);
         let size = font_size as f32;
-        let doc = self.document.upgrade().unwrap();
-        let mut doc = doc.borrow_mut();
-        let page = &doc.pages[self.page.0];
-        let bytes: Vec<u8> = {
-            if let Font::ExternalFont(face_direct_ref) = doc.fonts.get_font(font).unwrap().data {
-                face_direct_ref.font_bytes
-            }
-            else {
-                Vec::from([0_u8])
-            }
+
+        let bytes = match self.get_fonts(font).data {
+            Font::BuiltinFont(f) => ExternalFont::from(f).font_bytes,
+            Font::ExternalFont(f) => f.font_bytes,
         };
-        
+
+        let page = self.page_dimension();
         let ff = fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).unwrap();
 
-        let line_height: f64 = 10.0 + font_size;
+        let line_height: f64 = font_size * 1.5;
 
-        let (mut cur_x, mut cur_y): (f64, f64) = match pos {
-            Some(pos) => (pos.0, pos.1),
-            None => (margins.left, page.height - (margins.top + font_size)),
-        };
+        let (mut cur_x, mut cur_y): (f64, f64) = pos;
 
         //Character Dimensions
         let white_space: f64 = ff.rasterize(' ', size).0.advance_width.into();
-
         let hyphen: Option<f64> = match hyphenation {
             true => Some(ff.rasterize('-', size).0.advance_width as f64),
             false => None,
         };
 
         let en_us = Standard::from_embedded(Language::EnglishUS).unwrap();
-        let text_vec: Vec<&str> = text.par_split_whitespace().collect();
+        let text_vec: Vec<&str> = text.par_split(' ').collect();
         let mut word_width_map: HashMap<String, f64> = HashMap::new();
         let paragraph: Vec<String> =
             text_vec
@@ -540,148 +546,223 @@ impl PdfLayerReference {
                     if i == 0 {
                         line.push(String::new());
                     }
-                    let word_width = word
-                        .par_chars()
-                        .map(|char| ff.rasterize(char, size).0.advance_width as f64)
-                        .sum::<f64>();
-                    if cur_x + word_width < page.width - margins.left {
-                        match alignment {
-                            TextAlignment::Left => {
-                                self.use_text(word, font, font_size, (cur_x, cur_y))
-                            }
-                            _ => {
-                                word_width_map.entry(word.to_string()).or_insert(word_width);
-                                line.last_mut().unwrap().push_str(word);
-                                line.last_mut().unwrap().push(' ');
-                            }
-                        }
-                        cur_x += word_width + white_space;
-                    } else {
-                        let hyphenated = en_us.hyphenate(word);
-                        if !hyphenated.breaks.is_empty() {
-                            let vec_chars: Vec<char> = word.chars().collect();
-                            let hyphenated_word = hyphenated
-                                .breaks
-                                .iter()
-                                .rev()
-                                .enumerate()
-                                .find_map(|(i, u)| {
-                                    let mut hyphenated_string: String =
-                                        vec_chars[..*u].iter().collect();
-                                    let chars_width = hyphenated_string
-                                        .chars()
-                                        .map(|char| ff.rasterize(char, size).0.advance_width as f64)
-                                        .sum::<f64>();
-                                    if (cur_x + chars_width + hyphen.unwrap())
-                                        >= (page.width - margins.left)
-                                    {
-                                        match i {
-                                            0 => Some((None, word.to_string())),
-                                            _ => None,
-                                        }
-                                    } else {
-                                        //Don't add another hyphen if the word is already hyphenated
-                                        if !hyphenated_string.ends_with('-') {
-                                            hyphenated_string.push('-');
-                                        }
-
-                                        let remaining = vec_chars[*u..].iter().collect::<String>();
-                                        Some((Some(hyphenated_string), remaining))
-                                    }
-                                })
-                                .unwrap();
-                            match hyphenated_word.0 {
-                                Some(string) => {
-                                    let string_width = string
+                    if word.contains('\n') {
+                        let word = word.par_split_whitespace().collect::<Vec<&str>>();
+                        match word.len() {
+                            1 => {
+                                let word_width = word[0]
                                         .par_chars()
                                         .map(|char| ff.rasterize(char, size).0.advance_width as f64)
                                         .sum::<f64>();
-                                    match alignment {
-                                        TextAlignment::Left => {
-                                            self.use_text(string, font, font_size, (cur_x, cur_y))
-                                        }
-                                        _ => {
-                                            line.last_mut().unwrap().push_str(&string);
-                                            word_width_map.entry(string).or_insert(string_width);
-                                        }
+                                if (cur_x + word_width + white_space) < page.width - margins.left {
+                                    if let TextAlignment::Left = alignment {
+                                        self.use_text(word[0], font, font_size, (cur_x, cur_y));
                                     }
+                                    
+                                        word_width_map.entry(word[0].to_string()).or_insert(word_width);
+                                        line.last_mut().unwrap().push_str(word[0]);
+                                    cur_x += word_width;
                                 }
-                                None => (),
-                            }
-
-                            cur_y -= line_height;
-                            cur_x = margins.left;
-                            let remaining = hyphenated_word.1.clone();
-                            let rem_width = remaining
-                                .par_chars()
-                                .map(|char| ff.rasterize(char, size).0.advance_width)
-                                .sum::<f32>() as f64;
-
-                            match alignment {
-                                TextAlignment::Left => {
-                                    self.use_text(hyphenated_word.1, font, font_size, (cur_x, cur_y))
-                                }
-                                _ => {
-                                    word_width_map.entry(remaining.clone()).or_insert(rem_width);
+                                else {
                                     line.push(String::new());
-                                    line.last_mut().unwrap().push_str(&remaining);
-                                    line.last_mut().unwrap().push(' ');
+                                    line.last_mut().unwrap().push_str(word[0]);
+                                    word_width_map.entry(word[0].to_string()).or_insert(word_width);
+
                                 }
+                               
                             }
-                            cur_x += rem_width + white_space;
-                        } else {
-                            cur_x = margins.left;
-                            cur_y -= line_height;
+                            2 => {
+                                let _ = word.iter().enumerate().map(|(i, str)|{
+                                    let word_width = str
+                                        .par_chars()
+                                        .map(|char| ff.rasterize(char, size).0.advance_width as f64)
+                                        .sum::<f64>();
+                                    word_width_map.entry(str.to_string()).or_insert(word_width);
+                                    if i != 0 {
+                                        line.push(String::new());
+                                    }
+                                    line.last_mut().unwrap().push_str(str);
+                                    line.last_mut().unwrap().push(' ');
+                                });
+                            },
+                            _ => { println!("Uncovered case for word containing more than 2 whitespace characters")}
+                        }
+                    } else {
+                        let word_width = word
+                            .par_chars()
+                            .map(|char| ff.rasterize(char, size).0.advance_width as f64)
+                            .sum::<f64>();
+                        if cur_x + word_width < page.width - margins.left {
                             match alignment {
                                 TextAlignment::Left => {
                                     self.use_text(word, font, font_size, (cur_x, cur_y));
                                 }
                                 _ => {
-                                    line.push(String::new());
                                     word_width_map.entry(word.to_string()).or_insert(word_width);
                                     line.last_mut().unwrap().push_str(word);
                                     line.last_mut().unwrap().push(' ');
                                 }
                             }
                             cur_x += word_width + white_space;
+                        } else {
+                            let hyphenated = en_us.hyphenate(word);
+                            if !hyphenated.breaks.is_empty() {
+                                let vec_chars: Vec<char> = word.chars().collect();
+                                let hyphenated_word = hyphenated
+                                    .breaks
+                                    .iter()
+                                    .rev()
+                                    .enumerate()
+                                    .find_map(|(i, u)| {
+                                        let mut hyphenated_string: String =
+                                            vec_chars[..*u].iter().collect();
+                                        let chars_width = hyphenated_string
+                                            .chars()
+                                            .map(|char| {
+                                                ff.rasterize(char, size).0.advance_width as f64
+                                            })
+                                            .sum::<f64>();
+                                        if (cur_x + chars_width + hyphen.unwrap())
+                                            >= (page.width - margins.left)
+                                        {
+                                            match hyphenated.breaks.len() - (i + 1) {
+                                                0 => Some((None, word.to_string())),
+                                                _ => None,
+                                            }
+                                        } else {
+                                            //Don't add another hyphen if the word is already hyphenated
+                                            if !hyphenated_string.ends_with('-') {
+                                                hyphenated_string.push('-');
+                                            }
+
+                                            let remaining =
+                                                vec_chars[*u..].iter().collect::<String>();
+                                            Some((Some(hyphenated_string), remaining))
+                                        }
+                                    })
+                                    .unwrap();
+                                match hyphenated_word.0 {
+                                    Some(string) => {
+                                        let string_width = string
+                                            .par_chars()
+                                            .map(|char| {
+                                                ff.rasterize(char, size).0.advance_width as f64
+                                            })
+                                            .sum::<f64>();
+                                        match alignment {
+                                            TextAlignment::Left => {
+                                                self.use_text(
+                                                    string,
+                                                    font,
+                                                    font_size,
+                                                    (cur_x, cur_y),
+                                                );
+                                            }
+                                            _ => {
+                                                line.last_mut().unwrap().push_str(&string);
+                                                word_width_map
+                                                    .entry(string)
+                                                    .or_insert(string_width);
+                                            }
+                                        }
+                                    }
+                                    None => (),
+                                }
+
+                                cur_y -= line_height;
+                                cur_x = margins.left;
+                                let remaining = hyphenated_word.1.clone();
+                                let rem_width = remaining
+                                    .par_chars()
+                                    .map(|char| ff.rasterize(char, size).0.advance_width)
+                                    .sum::<f32>()
+                                    as f64;
+
+                                match alignment {
+                                    TextAlignment::Left => {
+                                        self.use_text(remaining, font, font_size, (cur_x, cur_y));
+                                    }
+                                    _ => {
+                                        word_width_map
+                                            .entry(remaining.clone())
+                                            .or_insert(rem_width);
+                                        line.push(String::new());
+                                        line.last_mut().unwrap().push_str(&remaining);
+                                        line.last_mut().unwrap().push(' ');
+                                    }
+                                }
+                                cur_x += rem_width + white_space;
+                            } else {
+                                cur_x = margins.left;
+                                cur_y -= line_height;
+                                match alignment {
+                                    TextAlignment::Left => {
+                                        self.use_text(word, font, font_size, (cur_x, cur_y));
+                                    }
+                                    _ => {
+                                        line.push(String::new());
+                                        word_width_map
+                                            .entry(word.to_string())
+                                            .or_insert(word_width);
+                                        line.last_mut().unwrap().push_str(word);
+                                        line.last_mut().unwrap().push(' ');
+                                    }
+                                }
+                                cur_x += word_width + white_space;
+                            }
                         }
                     }
                     line
                 });
         match alignment {
+            TextAlignment::Left => {
+                //Iters are lazy
+                //Need to call to invoke
+                let _ = paragraph;
+            }
             TextAlignment::Justify => {
-                let mut starty = page.height - (margins.top + font_size);
+                let mut starty = pos.1;
                 let total_lines = paragraph.len();
-                for (i, line) in paragraph.into_iter().enumerate() {
-                    let mut startx = margins.left;
+                let _ = paragraph.into_iter().enumerate().map(|(i, line)| {
+                    let mut startx = pos.0;
                     let words: Vec<&str> = line.split_whitespace().collect();
                     let line_width = words
                         .par_iter()
                         .map(|word| word_width_map[*word])
                         .sum::<f64>();
 
-                    let ws = match (total_lines - 1) == i {
-                        true => white_space,
-                        false => {
-                            (page.width - (margins.left + margins.right) - line_width)
-                                / ((words.len() - 1) as f64)
-                        }
-                    };
+                    if let TextAlignment::Right = alignment {
+                        startx = (page.width - margins.right)
+                            - (line_width + white_space * words.len() as f64);
+                    }
 
-                    for word in words.into_iter() {
+                    if let TextAlignment::Centre = alignment {
+                        startx = page.width / 2.0
+                            - (line_width + white_space * words.len() as f64) / 2.0;
+                    }
+
+                    let ws = match alignment {
+                        TextAlignment::Justify => {
+                            if total_lines - 1 == i {
+                                white_space
+                            } else {
+                                (page.width - (pos.0 * 2.0) - line_width)
+                                    / ((words.len() - 1) as f64)
+                            }
+                        }
+                        _ => white_space,
+                    };
+                    let _ = words.into_iter().map(|word| {
                         let word_width = word_width_map[word];
                         self.use_text(word, font, font_size, (startx, starty));
                         startx += word_width + ws;
-                    }
+                    });
                     starty -= line_height;
-                }
+                });
             }
             TextAlignment::Right => {
-                let mut starty = match pos {
-                    Some((_, val)) => val,
-                    None => page.height - (margins.top + font_size),
-                };
-                for line in paragraph.into_iter() {
+                let mut starty = pos.1;
+                let _ = paragraph.into_iter().map(|line| {
                     let words: Vec<&str> = line.split_whitespace().collect();
                     let line_width = words
                         .par_iter()
@@ -691,43 +772,41 @@ impl PdfLayerReference {
                     let mut startx = (page.width - margins.right)
                         - (line_width + white_space * words.len() as f64);
 
-                    for word in words.into_iter() {
+                    let _ = words.into_iter().map(|word|{
                         let word_width = word_width_map[word];
                         self.use_text(word, font, font_size, (startx, starty));
                         startx += word_width + white_space;
-                    }
+                    });
                     starty -= line_height;
-                }
+                });
             }
             TextAlignment::Centre => {
-                let mut starty = match pos {
-                    Some((_, val)) => val,
-                    None => page.height - (margins.top + font_size),
-                };
-                for line in paragraph.into_iter() {
+                let mut starty = pos.1;
+                let _ = paragraph.into_iter().map(|line|{
                     let words: Vec<&str> = line.split_whitespace().collect();
                     let line_width = words
                         .par_iter()
-                        .map(|word| word_width_map[*word])
+                        .map(|word| {
+                            if let Some(width) = word_width_map.get(*word) {
+                                *width
+                            } else {
+                                0.0
+                            }
+                        })
                         .sum::<f64>();
+                    let mut startx =
+                        page.width / 2.0 - (line_width + white_space * words.len() as f64) / 2.0;
 
-                    let mut startx = page.width / 2.0
-                        - (line_width + white_space * words.len() as f64) / 2.0;
-
-                    for word in words.into_iter() {
+                    let _ = words.into_iter().map(|word|{
                         let word_width = word_width_map[word];
                         self.use_text(word, font, font_size, (startx, starty));
                         startx += word_width + white_space;
-                    }
+                    });
                     starty -= line_height;
-                }
-            }
-            TextAlignment::Left => {
-                //Iters are lazy
-                //Need to call to invoke
-                let _ = paragraph;
+                });
             }
         }
+        self.end_text_section();
     }
 
     /// Add an operation
@@ -780,5 +859,51 @@ impl PdfLayerReference {
                 "Do",
                 vec![lopdf::Object::Name(name.as_bytes().to_vec())],
             ));
+    }
+
+    pub fn set_margins(&mut self, margins: PageMargins) {
+        self.margins = margins
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use hyphenation::{Hyphenator, Language, Load, Standard};
+
+    use crate::{BuiltinFont, ExternalFont};
+
+    #[test]
+    fn test_hyphenation() {
+        let size = 12.0;
+        let bytes = ExternalFont::from(BuiltinFont::Helvetica).font_bytes;
+        let ff = fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).unwrap();
+
+        let en_us = Standard::from_embedded(Language::EnglishUS).unwrap();
+        let word = "Psychology";
+        let hyphenated = en_us.hyphenate(word);
+        if !hyphenated.breaks.is_empty() {
+            let vec_chars: Vec<char> = word.chars().collect();
+            let hyphenated_word = hyphenated
+                .breaks
+                .iter()
+                .rev()
+                .enumerate()
+                .find_map(|(i, u)| {
+                    println!("{}", hyphenated.breaks.len() - (i + 1));
+                    let mut hyphenated_string: String = vec_chars[..*u].iter().collect();
+                    let chars_width = hyphenated_string
+                        .chars()
+                        .map(|char| ff.rasterize(char, size).0.advance_width as f64)
+                        .sum::<f64>();
+                    if hyphenated_string.contains("Psychol") {
+                        None
+                    }
+                    else {
+                        Some(hyphenated_string)
+                    }
+                })
+                .unwrap();
+            println!("{:?}", hyphenated_word);
+        }
     }
 }
