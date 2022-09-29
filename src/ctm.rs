@@ -109,7 +109,7 @@ impl Into<[f64; 6]> for TextMatrix {
                 let rad = (360.0 - rot).to_radians();
                 [rad.cos(), -rad.sin(), rad.sin(), rad.cos(), 0.0, 0.0 ] /* cos sin -sin cos 0 0 cm */
             },
-            Raw(r) => r.clone(),
+            Raw(r) => r,
             TranslateRotate(x, y, rot) => {
                 let rad = (360.0 - rot).to_radians();
                 [rad.cos(), -rad.sin(), rad.sin(), rad.cos(), x.0, y.0 ] /* cos sin -sin cos x y cm */
@@ -137,7 +137,7 @@ impl Into<[f64; 6]> for CurTransMat {
                 let rad = (360.0 - rot).to_radians(); 
                 [rad.cos(), -rad.sin(), rad.sin(), rad.cos(), 0.0, 0.0 ] 
             },
-            Raw(r) => r.clone(),
+            Raw(r) => r,
             Scale(x, y) => { 
                 // x 0 0 y 0 0 cm
                 [ x, 0.0, 0.0, y, 0.0, 0.0 ] 
@@ -155,7 +155,7 @@ impl Into<Operation> for CurTransMat {
 	{
 		use lopdf::Object::*;
         let matrix_nums: [f64; 6] = self.into();
-        let matrix: Vec<lopdf::Object> = matrix_nums.to_vec().into_iter().map(Real).collect();
+        let matrix: Vec<lopdf::Object> = matrix_nums.iter().copied().map(Real).collect();
         Operation::new("cm", matrix)
 	}
 }
@@ -166,7 +166,7 @@ impl Into<Operation> for TextMatrix {
     {
         use lopdf::Object::*;
         let matrix_nums: [f64; 6] = self.into();
-        let matrix: Vec<lopdf::Object> = matrix_nums.to_vec().into_iter().map(Real).collect();
+        let matrix: Vec<lopdf::Object> = matrix_nums.iter().copied().map(Real).collect();
         Operation::new("Tm", matrix)
     }
 }
@@ -177,7 +177,7 @@ impl Into<lopdf::Object> for CurTransMat {
     {
         use lopdf::Object::*;
         let matrix_nums: [f64; 6] = self.into();
-        Array(matrix_nums.to_vec().into_iter().map(Real).collect())
+        Array(matrix_nums.iter().copied().map(Real).collect())
     }
 }
 
