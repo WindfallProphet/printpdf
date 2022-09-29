@@ -13,7 +13,7 @@ use lopdf;
 use indices::*;
 use {
     BuiltinFont, DirectFontRef, Error, ExternalFont, Font, FontData, FontList, IccProfileList,
-    IndirectFontRef, Mm, PdfConformance, PdfMetadata, PdfPage, PdfPageReference,
+    IndirectFontRef, PdfConformance, PdfMetadata, PdfPage, PdfPageReference,
 };
 
 /// PDF document
@@ -43,7 +43,7 @@ pub struct PdfDocumentReference {
     /// can directly manipulate the document)
     pub(crate) document: Rc<RefCell<PdfDocument>>,
 }
-
+#[derive(Debug, Clone)]
 pub struct PageMargins {
     pub top: f64,
     pub right: f64,
@@ -52,23 +52,15 @@ pub struct PageMargins {
 }
 
 impl PageMargins {
-    pub fn new(
-        top: f64,
-        right: f64,
-        bottom: f64,
-        left: f64,
-    ) -> PageMargins {
+    pub fn new(top: f64, right: f64, bottom: f64, left: f64) -> Self {
         PageMargins {
-            top: top,
-            right: right,
-            bottom: bottom,
-            left: left,
+            top,
+            right,
+            bottom,
+            left,
         }
     }
-    pub fn symmetrical(
-        vertical: f64,
-        horizontal: f64,
-    ) -> PageMargins {
+    pub fn symmetrical(vertical: f64, horizontal: f64) -> Self {
         PageMargins {
             top: vertical,
             right: horizontal,
@@ -76,12 +68,20 @@ impl PageMargins {
             left: horizontal,
         }
     }
+    pub fn none() -> Self {
+        PageMargins {
+            top: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+            left: 0.0,
+        }
+    }
 }
 
 impl PdfDocument {
     /// Creates a new PDF document
     #[inline]
-    #[cfg_attr(feature = "cargo-clippy", allow(new_ret_no_self))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::new_ret_no_self))]
     pub fn new<S1, S2>(
         document_title: S1,
         initial_page_width: f64,
@@ -128,8 +128,8 @@ impl PdfDocument {
             document_id: random_character_string_32(),
             fonts: FontList::new(),
             icc_profiles: IccProfileList::new(),
-            inner_doc: lopdf::Document::with_version("1.3"),
-            metadata: PdfMetadata::new(document_title, 1, false, PdfConformance::X3_2002_PDF_1_3),
+            inner_doc: lopdf::Document::with_version("1.7"),
+            metadata: PdfMetadata::new(document_title, 1, false, PdfConformance::A2_2011_PDF_1_7),
             bookmarks: HashMap::new(),
         };
 
@@ -335,7 +335,7 @@ impl PdfDocumentReference {
         let external_font = ExternalFont::new(font_stream, last_font_index)?;
         let external_font_name = external_font.face_name.clone();
         let font = Font::ExternalFont(external_font);
-        implement_adding_fonts!(&self, external_font_name, font)
+        implement_adding_fonts!(self, external_font_name, font)
     }
 
     /// Add a font from a custom font backend
@@ -354,7 +354,7 @@ impl PdfDocumentReference {
         let external_font = ExternalFont::with_font_data(bytes, last_font_index, Box::new(data));
         let external_font_name = external_font.face_name.clone();
         let font = Font::ExternalFont(external_font);
-        implement_adding_fonts!(&self, external_font_name, font)
+        implement_adding_fonts!(self, external_font_name, font)
     }
 
     /// Add a built-in font to the document
@@ -367,19 +367,18 @@ impl PdfDocumentReference {
         &self,
         builtin_font: BuiltinFont,
     ) -> ::std::result::Result<IndirectFontRef, Error> {
-        let builtin_font_name: &'static str = builtin_font.clone().into();
-        implement_adding_fonts!(&self, builtin_font_name, Font::BuiltinFont(builtin_font))
+        let builtin_font_name: &'static str = builtin_font.into();
+        implement_adding_fonts!(self, builtin_font_name, Font::BuiltinFont(builtin_font))
     }
 
     // ----- GET FUNCTIONS
 
     /// Returns the page (for inserting content)
     #[inline]
-    #[cfg_attr(feature = "cargo-clippy", allow(unnecessary_operation))]
     pub fn get_page(&self, page: PdfPageIndex) -> PdfPageReference {
-        &self.document.borrow_mut().pages[page.0];
+        let _ = &self.document.borrow_mut().pages[page.0];
         PdfPageReference {
-            document: Rc::downgrade(&self.document).clone(),
+            document: Rc::downgrade(&self.document),
             page,
         }
     }
@@ -481,7 +480,7 @@ impl PdfDocumentReference {
             ("PageLayout", "OneColumn".into()),
             (
                 "PageMode",
-                if doc.bookmarks.len() > 0 {
+                if !doc.bookmarks.is_empty() {
                     "UseOutlines"
                 } else {
                     "UseNone"
@@ -604,7 +603,7 @@ impl PdfDocumentReference {
         // add all fonts / other resources shared in the whole document
         let fonts_dict: lopdf::Dictionary = doc.fonts.into_with_document(&mut doc.inner_doc);
 
-        if fonts_dict.len() > 0 {
+        if !fonts_dict.is_empty() {
             font_dict_id = Some(doc.inner_doc.add_object(Dictionary(fonts_dict)));
         }
 
@@ -638,7 +637,7 @@ impl PdfDocumentReference {
                 resources_page.set("Font", Reference(f));
             }
 
-            if resources_page.len() > 0 {
+            if !resources_page.is_empty() {
                 let resources_page_id = doc.inner_doc.add_object(Dictionary(resources_page));
                 p.set("Resources", Reference(resources_page_id));
             }
@@ -655,15 +654,13 @@ impl PdfDocumentReference {
 
             p.set("Contents", Reference(page_content_id));
             let page_obj = doc.inner_doc.add_object(p);
-            if doc.bookmarks.len() > 0 {
-                if let Some(_) = doc.bookmarks.get(&idx) {
-                    page_id_to_obj.insert(idx, page_obj);
-                }
+            if !doc.bookmarks.is_empty() && doc.bookmarks.get(&idx).is_some() {
+                page_id_to_obj.insert(idx, page_obj);
             }
             page_ids.push(Reference(page_obj))
         }
 
-        if doc.bookmarks.len() > 0 {
+        if !doc.bookmarks.is_empty() {
             let len = doc.bookmarks.len();
             if len == 1 {
                 let page_index = doc.bookmarks.iter().next().unwrap().0.to_owned();
@@ -778,7 +775,7 @@ impl PdfDocumentReference {
     /// Save PDF Document, writing the contents to the target
     pub fn save<W: Write>(self, target: &mut BufWriter<W>) -> Result<(), Error> {
         let pdf_as_bytes = self.save_to_bytes()?;
-        target.write(&pdf_as_bytes)?;
+        target.write_all(&pdf_as_bytes)?;
         Ok(())
     }
 
