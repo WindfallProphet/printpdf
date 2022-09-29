@@ -118,8 +118,8 @@ impl Image {
         if transform.translate_x.is_some() ||
            transform.translate_y.is_some() {
             transforms.push(CurTransMat::Translate(
-                transform.translate_x.unwrap_or(Mm(0.0)).into_pt(),
-                transform.translate_y.unwrap_or(Mm(0.0)).into_pt(),
+                transform.translate_x.unwrap_or(Mm(0.0)).into(),
+                transform.translate_y.unwrap_or(Mm(0.0)).into(),
             ));
         }
 

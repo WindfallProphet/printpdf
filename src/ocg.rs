@@ -27,7 +27,7 @@ impl OCGList {
 }
 
 impl Into<lopdf::Dictionary> for OCGList {
-    #[cfg_attr(feature = "cargo-clippy", allow(needless_return))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_return))]
     fn into(self)
     -> lopdf::Dictionary
     {

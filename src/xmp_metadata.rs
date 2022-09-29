@@ -26,9 +26,9 @@ impl XmpMetadata {
     {
         let document_id: String = random_character_string_32();
         Self {
-            document_id: document_id,
-            rendition_class: rendition_class,
-            document_version: document_version,
+            document_id,
+            rendition_class,
+            document_version,
         }
     }
 

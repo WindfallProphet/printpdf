@@ -30,8 +30,8 @@ impl IccProfile {
     -> Self
     {
         Self {
-            icc: icc,
-            icc_type: icc_type,
+            icc,
+            icc_type,
             has_alternate: true,
             has_range: false,
         }
@@ -73,8 +73,8 @@ impl Into<lopdf::Stream> for IccProfile {
         };
 
         let mut stream_dict = LoDictionary::from_iter(vec![
-                ("N", Integer(num_icc_fields)).into(),
-                ("Length", Integer(self.icc.len() as i64).into())]);
+                ("N", Integer(num_icc_fields)),
+                ("Length", Integer(self.icc.len() as i64))]);
 
         if self.has_alternate {
             stream_dict.set("Alternate", Name(alternate.into()));

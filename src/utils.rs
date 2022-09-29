@@ -129,5 +129,5 @@ pub(crate) fn random_character_string_32() -> String {
 
 #[inline(always)]
 fn u8_to_char(input: u8) -> char {
-    ('A' as u8 + input) as char
+    (b'A' + input) as char
 }

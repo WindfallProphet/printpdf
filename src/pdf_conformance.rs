@@ -231,7 +231,7 @@ impl PdfConformance {
 
     /// Detects if the PDF must have XMP metadata
     /// if it has to conform to the given PDF Standard
-    #[cfg_attr(feature = "cargo-clippy", allow(match_same_arms))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::match_same_arms))]
     pub fn must_have_xmp_metadata(&self)
     -> bool
     {
@@ -263,7 +263,7 @@ impl PdfConformance {
 
     /// __STUB__: Detects if the PDF has layering (optional content groups),
     /// but the conformance to the given PDF standard does not allow it.
-    #[cfg_attr(feature = "cargo-clippy", allow(match_same_arms))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::match_same_arms))]
     pub fn is_layering_allowed(&self)
     -> bool
     {

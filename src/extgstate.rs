@@ -43,32 +43,32 @@ use std::collections::HashSet;
 use std::collections::HashMap;
 
 // identifiers for tracking the changed fields
-pub (crate) const LINE_WIDTH: &'static str = "line_width";
-pub (crate) const LINE_CAP: &'static str = "line_cap";
-pub (crate) const LINE_JOIN: &'static str = "line_join";
-pub (crate) const MITER_LIMIT: &'static str = "miter_limit";
-pub (crate) const LINE_DASH_PATTERN: &'static str = "line_dash_pattern";
-pub (crate) const RENDERING_INTENT: &'static str = "rendering_intent";
-pub (crate) const OVERPRINT_STROKE: &'static str = "overprint_stroke";
-pub (crate) const OVERPRINT_FILL: &'static str = "overprint_fill";
-pub (crate) const OVERPRINT_MODE: &'static str = "overprint_mode";
-pub (crate) const FONT: &'static str = "font";
-pub (crate) const BLACK_GENERATION: &'static str = "black_generation";
-pub (crate) const BLACK_GENERATION_EXTRA: &'static str = "black_generation_extra";
-pub (crate) const UNDERCOLOR_REMOVAL: &'static str = "under_color_removal";
-pub (crate) const UNDERCOLOR_REMOVAL_EXTRA: &'static str = "undercolor_removal_extra";
-pub (crate) const TRANSFER_FUNCTION: &'static str = "transfer_function";
-pub (crate) const TRANSFER_FUNCTION_EXTRA: &'static str = "transfer_function_extra";
-pub (crate) const HALFTONE_DICTIONARY: &'static str = "halftone_dictionary";
-pub (crate) const FLATNESS_TOLERANCE: &'static str = "flatness_tolerance";
-pub (crate) const SMOOTHNESS_TOLERANCE: &'static str = "smoothness_tolerance";
-pub (crate) const STROKE_ADJUSTMENT: &'static str = "stroke_adjustment";
-pub (crate) const BLEND_MODE: &'static str = "blend_mode";
-pub (crate) const SOFT_MASK: &'static str = "soft_mask";
-pub (crate) const CURRENT_STROKE_ALPHA: &'static str = "current_stroke_alpha";
-pub (crate) const CURRENT_FILL_ALPHA: &'static str = "current_fill_alpha";
-pub (crate) const ALPHA_IS_SHAPE: &'static str = "alpha_is_shape";
-pub (crate) const TEXT_KNOCKOUT: &'static str = "text_knockout";
+pub (crate) const LINE_WIDTH: &str = "line_width";
+pub (crate) const LINE_CAP: &str = "line_cap";
+pub (crate) const LINE_JOIN: &str = "line_join";
+pub (crate) const MITER_LIMIT: &str = "miter_limit";
+pub (crate) const LINE_DASH_PATTERN: &str = "line_dash_pattern";
+pub (crate) const RENDERING_INTENT: &str = "rendering_intent";
+pub (crate) const OVERPRINT_STROKE: &str = "overprint_stroke";
+pub (crate) const OVERPRINT_FILL: &str = "overprint_fill";
+pub (crate) const OVERPRINT_MODE: &str = "overprint_mode";
+pub (crate) const FONT: &str = "font";
+pub (crate) const BLACK_GENERATION: &str = "black_generation";
+pub (crate) const BLACK_GENERATION_EXTRA: &str = "black_generation_extra";
+pub (crate) const UNDERCOLOR_REMOVAL: &str = "under_color_removal";
+pub (crate) const UNDERCOLOR_REMOVAL_EXTRA: &str = "undercolor_removal_extra";
+pub (crate) const TRANSFER_FUNCTION: &str = "transfer_function";
+pub (crate) const TRANSFER_FUNCTION_EXTRA: &str = "transfer_function_extra";
+pub (crate) const HALFTONE_DICTIONARY: &str = "halftone_dictionary";
+pub (crate) const FLATNESS_TOLERANCE: &str = "flatness_tolerance";
+pub (crate) const SMOOTHNESS_TOLERANCE: &str = "smoothness_tolerance";
+pub (crate) const STROKE_ADJUSTMENT: &str = "stroke_adjustment";
+pub (crate) const BLEND_MODE: &str = "blend_mode";
+pub (crate) const SOFT_MASK: &str = "soft_mask";
+pub (crate) const CURRENT_STROKE_ALPHA: &str = "current_stroke_alpha";
+pub (crate) const CURRENT_FILL_ALPHA: &str = "current_fill_alpha";
+pub (crate) const ALPHA_IS_SHAPE: &str = "alpha_is_shape";
+pub (crate) const TEXT_KNOCKOUT: &str = "text_knockout";
 
 /// List of many `ExtendedGraphicsState`
 #[derive(Debug, Clone)]
@@ -570,7 +570,7 @@ impl ExtendedGraphicsStateBuilder {
 
     /// Consumes the builder and returns an actual ExtendedGraphicsState
     #[inline]
-    #[cfg_attr(feature = "cargo-clippy", allow(needless_return))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_return))]
     pub fn build(self)
     -> ExtendedGraphicsState
     {
@@ -620,9 +620,9 @@ impl Into<lopdf::Object> for ExtendedGraphicsState {
     /// Compares the current graphics state with the previous one and returns an
     /// "optimized" graphics state, meaning only the fields that have changed in
     /// comparison to the previous one are returned.
-    #[cfg_attr(feature = "cargo-clippy", allow(needless_return))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_return))]
     #[cfg_attr(feature = "cargo-clippy", allow(cyclomatic_complexity))]
-    #[cfg_attr(feature = "cargo-clippy", allow(string_lit_as_bytes))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::string_lit_as_bytes))]
     fn into(self)
     -> lopdf::Object
     {
@@ -795,7 +795,7 @@ impl ExtendedGraphicsStateRef {
 /// in a `DeviceCMYK` color space should erase that component (`EraseUnderlying`) or
 /// leave it unchanged (`KeepUnderlying`) when overprinting (see Section 4.5.6, “Over-
 /// print Control”). Initial value: `EraseUnderlying`
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum OverprintMode {
     /// Erase underlying color when overprinting
     EraseUnderlying, /* 0, default */
@@ -817,7 +817,7 @@ impl Into<lopdf::Object> for OverprintMode {
 
 /// Black generation calculates the amount of black to be used when trying to
 /// reproduce a particular color.
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum BlackGenerationFunction {
     /// Regular black generation function
     ///
@@ -840,7 +840,7 @@ pub enum BlackGenerationFunction {
     WithUnderColorRemoval,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum BlackGenerationExtraFunction {
 
 }
@@ -854,22 +854,22 @@ pub enum BlackGenerationExtraFunction {
 /// components. It can simply return its k operand unchanged, or it can return 0.0
 /// (so that no color is removed), some fraction of the black amount, or even a
 /// negative amount, thereby adding to the total amount of colorant.
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum UnderColorRemovalFunction {
     Default,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum UnderColorRemovalExtraFunction {
 
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum TransferFunction {
 
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum TransferExtraFunction {
 
 }
@@ -943,7 +943,7 @@ impl HalftoneType {
 
 /// Spot functions, Table 6.1, Page 489 in Pdf Reference v1.7
 /// The code is pseudo code, returning the grey component at (x, y).
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum SpotFunction {
     /// `1 - (pow(x, 2) + pow(y, 2))`
     SimpleDot,
@@ -1014,7 +1014,7 @@ pub enum SpotFunction {
     Diamond,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum BlendMode {
     Seperable(SeperableBlendMode),
     NonSeperable(NonSeperableBlendMode),
@@ -1065,7 +1065,7 @@ impl Into<lopdf::Object> for BlendMode {
 ///
 /// The function simply notes the formula that has to be applied to (`color_new`, `color_old`) in order
 /// to get the desired effect. You have to run each formula once for each color channel.
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum SeperableBlendMode {
     /// Selects the source color, ignoring the old color. Default mode.
     ///
@@ -1266,7 +1266,7 @@ pub enum SeperableBlendMode {
 ///
 /// For the K component, the result is the K component of Cb for the Hue, Saturation, and
 /// Color blend modes; it is the K component of Cs for the Luminosity blend mode.
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum NonSeperableBlendMode {
     Hue,
     Saturation,
@@ -1281,7 +1281,7 @@ pub enum NonSeperableBlendMode {
 /// made among various properties of a color specification when rendering colors for
 /// a given device. Specifying a rendering intent (PDF 1.1) allows a PDF file to set priorities
 /// regarding which of these properties to preserve and which to sacrifice.
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum RenderingIntent {
     /// Colors are represented solely with respect to the light source; no
     /// correction is made for the output medium’s white point (such as
@@ -1362,7 +1362,7 @@ impl Into<lopdf::Object> for RenderingIntent {
 /// Can also be used for Vignettes, etc.
 /// Beware of color spaces!
 /// __See PDF Reference Page 545__ - Soft masks
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub struct SoftMask {
     /// The data to be used as a soft mask
     data: Vec<u8>,
@@ -1370,7 +1370,7 @@ pub struct SoftMask {
     bits_per_component: u8,
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum SoftMaskFunction {
     // (Color, Shape, Alpha) = Composite(Color0, Alpha0, Group)
     /// In this function, the old (backdrop) color does not contribute to the result.
@@ -1381,7 +1381,7 @@ pub enum SoftMaskFunction {
 
 }
 /// __See PDF Reference Page 216__ - Line join style
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum LineJoinStyle {
     /// Miter join. The outer edges of the strokes for the two segments are extended
     /// until they meet at an angle, as in a picture frame. If the segments meet at too
@@ -1430,7 +1430,7 @@ impl Into<lopdf::Object> for LineJoinStyle {
 }
 
 /// __See PDF Reference (Page 216)__ - Line cap (ending) style
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum LineCapStyle {
     /// Butt cap. The stroke is squared off at the endpoint of the path. There is no
     /// projection beyond the end of the path.
@@ -1473,7 +1473,7 @@ impl Into<lopdf::Object> for LineCapStyle {
 }
 
 /// Line dash pattern is made up of a total width
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub struct LineDashPattern {
     /// Offset at which the dashing pattern should start, measured from the beginning ot the line
     /// Default: 0 (start directly where the line starts)
@@ -1511,9 +1511,9 @@ impl LineDashPattern {
 
 // conversion into a dash array for reuse in operation / gs dictionary
 impl Into<(Vec<i64>, i64)> for LineDashPattern {
-    #[cfg_attr(feature = "cargo-clippy", allow(never_loop))]
-    #[cfg_attr(feature = "cargo-clippy", allow(while_let_loop))]
-    #[cfg_attr(feature = "cargo-clippy", allow(needless_return))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::never_loop))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::while_let_loop))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_return))]
     fn into(self)
     -> (Vec<i64>, i64)
     {
