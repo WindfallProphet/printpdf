@@ -40,7 +40,7 @@ impl FromIterator<(Point, bool)> for Line {
             points.push(i);
         }
         Line {
-            points: points,
+            points,
             .. Default::default()
         }
     }
