@@ -11,6 +11,7 @@ use owned_ttf_parser::{AsFaceRef as _, Face, OwnedFace};
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::iter::FromIterator;
+use std::process::exit;
 use {Error, PdfError};
 
 /// The font
@@ -40,15 +41,14 @@ pub enum BuiltinFont {
     Symbol,
     ZapfDingbats,
 }
-
-impl BuiltinFont {
-    fn load(self) -> Result<ExternalFont, Error> {
+impl From<BuiltinFont> for ExternalFont {
+    fn from(item: BuiltinFont) -> Self {
         let mut db = fontdb::Database::new();
         db.load_system_fonts();
 
         use BuiltinFont::*;
         //https://wiki.archlinux.org/title/Metric-compatible_fonts
-        let metric_compatible: Vec<&str> = match self {
+        let metric_compatible: Vec<&str> = match item {
             TimesRoman | TimesBold | TimesItalic | TimesBoldItalic => {
                 vec!["Times New Roman", "Liberation Serif", "FreeSerif", "Tinos"]
             }
@@ -61,24 +61,19 @@ impl BuiltinFont {
             Symbol => vec!["Symbol"],
             ZapfDingbats => vec!["ZapfDingbats"],
         };
-
         let path = metric_compatible
             .into_iter()
             .find_map(|f| -> Option<String> {
-                let weight = match f.contains("Bold") {
-                    true => Weight::BOLD,
-                    false => Weight::NORMAL,
+                let weight = match item {
+                    TimesBold | HelveticaBold | TimesBoldItalic | HelveticaBoldOblique
+                    | CourierBold | CourierBoldOblique => Weight::BOLD,
+                    _ => Weight::NORMAL,
                 };
-                let style = match f.contains("Italic") || f.contains("Oblique") {
-                    false => Style::Normal,
-                    true => {
-                        if f.contains("Italic") {
-                            Style::Italic
-                        }
-                        else {
-                            Style::Oblique
-                        }
-                    }
+                let style = match item {
+                    TimesItalic => Style::Italic,
+                    HelveticaOblique | HelveticaBoldOblique | CourierOblique
+                    | CourierBoldOblique => Style::Oblique,
+                    _ => Style::Normal,
                 };
 
                 match db.query(&Query {
@@ -100,7 +95,14 @@ impl BuiltinFont {
             });
         let stream = File::open(path.unwrap()).unwrap();
 
-        ExternalFont::new(stream, 0)
+        match ExternalFont::new(stream, 0) {
+            Ok(f) => f,
+            Err(_) => {
+                let missing: &str = item.into();
+                eprintln!("System missing compatible font for {}", missing);
+                exit(1);
+            }
+        }
     }
 }
 
@@ -383,7 +385,7 @@ impl ExternalFont {
         let mut desc_fonts = LoDictionary::from_iter(vec![
             ("Type", Name("Font".into())),
             ("Subtype", Name("CIDFontType2".into())),
-            ("BaseFont", Name(face_name.clone().into())),
+            ("BaseFont", Name(face_name.into())),
             (
                 "CIDSystemInfo",
                 Dictionary(LoDictionary::from_iter(vec![
@@ -503,11 +505,7 @@ impl FontList {
     #[inline]
     pub fn get_font(&self, font: &IndirectFontRef) -> Option<DirectFontRef> {
         let font_ref = self.fonts.get(font);
-        if let Some(r) = font_ref {
-            Some(r.clone())
-        } else {
-            None
-        }
+        font_ref.cloned()
     }
 
     /// Returns the number of fonts currenly in use
@@ -683,31 +681,17 @@ impl Clone for Box<dyn FontData> {
 
 #[cfg(test)]
 mod tests {
-    use crate::BuiltinFont;
+    use crate::{BuiltinFont, ExternalFont};
 
     #[test]
     fn it_works() {
-        let font = BuiltinFont::TimesRoman.load().unwrap().font_bytes;
+        let font = ExternalFont::from(BuiltinFont::TimesRoman).font_bytes;
+        let font_data = ExternalFont::from(BuiltinFont::TimesRoman).font_data; 
+        let gid = font_data.glyph_id('c').unwrap();
+        let metrics = font_data.glyph_metrics(gid).unwrap();
+        println!("{:?}", metrics.width);
         let ff = fontdue::Font::from_bytes(font, fontdue::FontSettings::default()).unwrap();
         ff.rasterize('c', 10.0);
         println!("{}", ff.rasterize('c', 10.0).0.advance_width);
-    }
-
-    #[test]
-    fn net() {
-        let font = BuiltinFont::Courier
-            .load()
-            .unwrap()
-            .font_data
-            .glyph_id('c')
-            .unwrap();
-        let metrics = BuiltinFont::Courier
-            .load()
-            .unwrap()
-            .font_data
-            .glyph_metrics(font)
-            .unwrap();
-        let met = metrics.width;
-        println!("{met}");
     }
 }
