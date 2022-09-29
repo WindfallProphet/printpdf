@@ -16,7 +16,7 @@ autoexamples = false
 # minimum dependencies
 lopdf = { version = "0.27.0", default-features = false, features = ["pom_parser"] }
 owned_ttf_parser = { version = "0.12", default-features = false }
-time = { version = "0.2.11", default-features = false, features = ["std"] }
+time = { version = "0.3.14", default-features = false, features = ["std"] }
 # optional: logging
 log = { version = "0.4.8", optional = true }
 # image reading (png / jpeg)
@@ -29,6 +29,7 @@ fontdb = "0.9.1"
 rayon = "1.5.3"
 fontdue = "0.7.2"
 hyphenation = {version = "0.8.4", features = ["embed_all"]}
+encoding = "0.2.33"
 
 [features]
 default = []
