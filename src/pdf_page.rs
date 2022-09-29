@@ -5,6 +5,8 @@ use std::cell::RefCell;
 use std::rc::Weak;
 
 use indices::{PdfLayerIndex, PdfPageIndex};
+
+use crate::PageMargins;
 use {
     ExtendedGraphicsState, ExtendedGraphicsStateRef, Mm, Pattern, PatternRef, PdfDocument,
     PdfLayer, PdfLayerReference, PdfResources, Pt, XObject, XObjectRef,
@@ -62,7 +64,12 @@ impl PdfPage {
     /// Create a new page, notice that width / height are in millimeter.
     /// Page must contain at least one layer
     #[inline]
-    pub fn new<S>(width: f64, height: f64, layer_name: S, page_index: usize) -> (Self, PdfLayerIndex)
+    pub fn new<S>(
+        width: f64,
+        height: f64,
+        layer_name: S,
+        page_index: usize,
+    ) -> (Self, PdfLayerIndex)
     where
         S: Into<String>,
     {
@@ -111,20 +118,18 @@ impl PdfPage {
 
         for (idx, mut layer) in self.layers.into_iter().enumerate() {
             // push OCG and q to the beginning of the layer
-            layer
-                .operations
-                .insert(0, Operation::new("q".into(), vec![]));
+            layer.operations.insert(0, Operation::new("q", vec![]));
             layer.operations.insert(
                 0,
                 Operation::new(
-                    "BDC".into(),
+                    "BDC",
                     vec![Name("OC".into()), Name(ocg_refs[idx].name.clone().into())],
                 ),
             );
 
             // push OCG END and Q to the end of the layer stream
-            layer.operations.push(Operation::new("Q".into(), vec![]));
-            layer.operations.push(Operation::new("EMC".into(), vec![]));
+            layer.operations.push(Operation::new("Q", vec![]));
+            layer.operations.push(Operation::new("EMC", vec![]));
 
             // should end up looking like this:
 
@@ -184,27 +189,29 @@ impl PdfPageReference {
         let layer = PdfLayer::new(layer_name);
         page.layers.push(layer);
         let index = PdfLayerIndex(current_page_index);
-
+        let margins = PageMargins::none();
         PdfLayerReference {
             document: self.document.clone(),
             page: self.page,
             layer: index,
+            margins,
         }
     }
 
     /// Validates that a layer is present and returns a reference to it
     #[inline]
-    #[cfg_attr(feature = "cargo-clippy", allow(no_effect))]
+    #[cfg_attr(feature = "cargo-clippy", allow(clippy::no_effect))]
     pub fn get_layer(&self, layer: PdfLayerIndex) -> PdfLayerReference {
         let doc = self.document.upgrade().unwrap();
         let doc = doc.borrow();
 
         let _ = &doc.pages[self.page.0].layers[layer.0];
-
+        let margins = PageMargins::none();
         PdfLayerReference {
             document: self.document.clone(),
             page: self.page,
-            layer: layer,
+            layer,
+            margins,
         }
     }
 }
