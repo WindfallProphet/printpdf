@@ -12,7 +12,7 @@ use crate::{
         PdfOperation::{self, *},
         PdfString,
     },
-    Color, ExternalFont, Font, IndirectFontRef, PageMargins, PdfLayerReference,
+    Color, ExternalFont, Font, IndirectFontRef, PdfLayerReference, TextMatrix,
 };
 
 #[derive(Copy, Clone)]
@@ -70,12 +70,23 @@ impl<'a> TextMode<'a> {
         }
         self.move_by(pos);
     }
+
+    pub fn text_out<S: Into<PdfString>>(&self, text: S, matrix: [f64; 6], pos: (f64, f64)) {
+        let (x, y) = abs_to_real(matrix, pos.0, pos.1);
+        self.write_at(text, (x, y));
+    }
+    pub fn new_line(&self) {
+        self.layer.add_operation(NextLine {})
+    }
     /// Set the current font
     pub fn set_font(&self, font: &IndirectFontRef, font_size: f64) {
         self.layer.set_font(font, font_size);
     }
     pub fn set_fill_color(&self, fill_color: Color) {
         self.layer.set_fill_color(fill_color);
+    }
+    pub fn set_text_matrix(&self, matrix: TextMatrix) {
+        self.layer.set_text_matrix(matrix);
     }
     /// Write text at the current text cursor
     pub fn write<S>(&self, text: S)
@@ -101,7 +112,8 @@ impl<'a> TextMode<'a> {
         alignment: TextAlignment,
         pos: (f64, f64),
     ) {
-        let margins = PageMargins::symmetrical(0.0, pos.0);
+        //let margins = PageMargins::symmetrical(0.0, pos.0);
+        let hyphenation = true;
         let size = font_size as f32;
         let bytes = match self.layer.get_fonts(font).data {
             Font::BuiltinFont(f) => ExternalFont::from(f).font_bytes,
@@ -116,21 +128,28 @@ impl<'a> TextMode<'a> {
 
         //Character Dimensions
         let white_space: f64 = ff.rasterize(' ', size).0.advance_width.into();
+        let hyphen = match hyphenation {
+            true => Some(ff.rasterize('-', size).0.advance_width as f64),
+            false => None
+        };
 
+        let string_width = |word: &str| {
+            word.par_chars()
+                .map(|char| ff.rasterize(char, size).0.advance_width as f64)
+                .sum::<f64>()
+        };
+        let new_line = |vec: &mut Vec<(String, f64)>| vec.push((String::new(), 0.0));
         let paragraph: Vec<(String, f64)> =
             text.split(' ')
                 .enumerate()
                 .fold(Vec::new(), |mut line, (i, word)| {
                     if i == 0 {
-                        line.push((String::new(), 0.0));
+                        new_line(&mut line);
                     }
 
                     if !word.is_empty() {
-                        let word_width = word
-                            .par_chars()
-                            .map(|char| ff.rasterize(char, size).0.advance_width as f64)
-                            .sum::<f64>();
-                        if cur_x + word_width < page.width - margins.left {
+                        let word_width = string_width(word);
+                        if cur_x + word_width < page.width - pos.0 {
                             if word.contains(char::is_whitespace) {
                                 let vc: Vec<char> = word.chars().collect();
                                 let ws_chars: Vec<(usize, char)> = word
@@ -141,27 +160,17 @@ impl<'a> TextMode<'a> {
                                     '\n' | '\r' => {
                                         let (w1, w2) = vc.split_at(*i);
                                         let word1: String = w1.iter().collect();
-                                        let word_length = word1
-                                            .par_chars()
-                                            .map(|char| {
-                                                ff.rasterize(char, size).0.advance_width as f64
-                                            })
-                                            .sum::<f64>();
+                                        let word_length = string_width(&word1);
                                         let (str, width) = line.last_mut().unwrap();
                                         str.push_str(&word1);
                                         str.push(' ');
                                         *width += word_length + white_space;
-                                        line.push((String::new(), 0.0));
+                                        new_line(&mut line);
                                         let word = vc[*i..]
                                             .iter()
                                             .filter(|char| !char.is_whitespace())
                                             .collect::<String>();
-                                        let word_length = word
-                                            .par_chars()
-                                            .map(|char| {
-                                                ff.rasterize(char, size).0.advance_width as f64
-                                            })
-                                            .sum::<f64>();
+                                        let word_length = string_width(&word);
                                         if word_length > 0.0 {
                                             let (str, width) = line.last_mut().unwrap();
                                             str.push_str(&word);
@@ -179,11 +188,10 @@ impl<'a> TextMode<'a> {
                                 str.push(' ');
                                 cur_x += word_width + white_space;
                             }
-                        } else {
+                        } else if hyphenation {
                             let en_us = Standard::from_embedded(Language::EnglishUS).unwrap();
                             let hyphenated = en_us.hyphenate(word);
                             if !hyphenated.breaks.is_empty() {
-                                let hyphen = ff.rasterize('-', size).0.advance_width as f64;
                                 let vec_chars: Vec<char> = word.chars().collect();
                                 let hyphenated_word = hyphenated
                                     .breaks
@@ -193,68 +201,57 @@ impl<'a> TextMode<'a> {
                                     .find_map(|(i, u)| {
                                         let mut hyphenated_string: String =
                                             vec_chars[..*u].iter().collect();
-                                        let chars_width = hyphenated_string
-                                            .chars()
-                                            .map(|char| {
-                                                ff.rasterize(char, size).0.advance_width as f64
-                                            })
-                                            .sum::<f64>();
-                                        if (cur_x + chars_width + hyphen)
-                                            >= (page.width - margins.left)
-                                        {
-                                            match hyphenated.breaks.len() - (i + 1) {
-                                                0 => Some((None, word.to_string())),
-                                                _ => None,
+                                        let chars_width = string_width(&hyphenated_string);
+                                        if (cur_x + chars_width + hyphen.expect("Hyphenation is disabled")) >= (page.width - pos.0) {
+                                            if hyphenated.breaks.len() - (i + 1) == 0 {
+                                                Some((None, word.to_string()))
+                                            } else {
+                                                None
                                             }
                                         } else {
                                             //Don't add another hyphen if the word is already hyphenated
                                             if !hyphenated_string.ends_with('-') {
                                                 hyphenated_string.push('-');
                                             }
-
                                             let remaining =
                                                 vec_chars[*u..].iter().collect::<String>();
                                             Some((Some(hyphenated_string), remaining))
                                         }
                                     })
                                     .unwrap();
-                                match hyphenated_word.0 {
-                                    Some(string) => {
-                                        let string_width = string
-                                            .par_chars()
-                                            .map(|char| {
-                                                ff.rasterize(char, size).0.advance_width as f64
-                                            })
-                                            .sum::<f64>();
-                                        let (str, width) = line.last_mut().unwrap();
-                                        str.push_str(&string);
-                                        *width += string_width + white_space;
-                                    }
-                                    None => (),
+                                if let Some(string) = hyphenated_word.0 {
+                                    let string_width = string_width(&string);
+                                    let (str, width) = line.last_mut().unwrap();
+                                    str.push_str(&string);
+                                    *width += string_width + white_space;
                                 }
                                 cur_y -= line_height;
-                                cur_x = margins.left;
+                                cur_x = pos.0;
                                 let remaining = hyphenated_word.1.clone();
-                                let rem_width = remaining
-                                    .par_chars()
-                                    .map(|char| ff.rasterize(char, size).0.advance_width)
-                                    .sum::<f32>()
-                                    as f64;
-                                line.push((String::new(), 0.0));
+                                let rem_width = string_width(&remaining);
+                                new_line(&mut line);
                                 let (str, width) = line.last_mut().unwrap();
                                 *width += rem_width + white_space;
                                 str.push_str(&remaining);
                                 str.push(' ');
                                 cur_x += rem_width + white_space;
                             } else {
-                                cur_x = margins.left;
+                                cur_x = pos.0;
                                 cur_y -= line_height;
-                                line.push((String::new(), 0.0));
+                                new_line(&mut line);
                                 let (str, width) = line.last_mut().unwrap();
                                 *width += word_width + white_space;
                                 str.push_str(word);
                                 str.push(' ');
                             }
+                        } else {
+                            cur_x = pos.0;
+                            cur_y -= line_height;
+                            new_line(&mut line);
+                            let (str, width) = line.last_mut().unwrap();
+                            *width += word_width + white_space;
+                            str.push_str(word);
+                            str.push(' ');
                             cur_x += word_width + white_space;
                         }
                     }
@@ -271,8 +268,8 @@ impl<'a> TextMode<'a> {
                 paragraph
                     .into_iter()
                     .enumerate()
-                    .for_each(|(i, (line, _))| {
-                        self.layer.add_operation(ShowText { text: line.into() });
+                    .for_each(|(_, (line, _))| {
+                        self.write(line);
                         self.layer.add_operation(MoveTextCursor {
                             x: 0.0.into(),
                             y: Real(-line_height),
@@ -289,7 +286,7 @@ impl<'a> TextMode<'a> {
                 while let Some((line, line_width)) = just_peek.next() {
                     let mut startx = pos.0;
                     if let TextAlignment::Right = alignment {
-                        startx = (page.width - margins.right) - (line_width);
+                        startx = (page.width - pos.0) - (line_width);
                     }
 
                     if let TextAlignment::Center = alignment {
@@ -316,7 +313,7 @@ impl<'a> TextMode<'a> {
             TextAlignment::Right => {
                 let mut starty = pos.1;
                 paragraph.into_iter().for_each(|(line, line_width)| {
-                    let startx = (page.width - margins.right) - line_width;
+                    let startx = (page.width - pos.0) - line_width;
                     self.move_to((startx, starty));
                     self.write(line);
                     starty -= line_height;
@@ -325,7 +322,10 @@ impl<'a> TextMode<'a> {
             TextAlignment::Center => {
                 self.layer.set_word_spacing(0.0);
                 let mut starty = pos.1;
-                paragraph.into_iter().for_each(|(line, line_width)| {
+                paragraph.into_iter().for_each(|(line, mut line_width)| {
+                    if let Some(' ') = line.chars().last() {
+                        line_width -= white_space;
+                    }
                     let startx = (page.width - line_width) / 2.0;
                     self.write_at(line, (startx, starty));
                     starty -= line_height;
@@ -333,4 +333,12 @@ impl<'a> TextMode<'a> {
             }
         }
     }
+}
+
+pub fn abs_to_real(matrix: [f64; 6], x_abs: f64, y_abs: f64) -> (f64, f64) {
+    let y: f64 = (y_abs - matrix[5] - (x_abs - matrix[4]) * matrix[1] / matrix[0])
+        / (matrix[3] - matrix[2] * matrix[1] / matrix[0]);
+    let x_rel = (x_abs - matrix[4] - y * matrix[3]) / matrix[0];
+    let y_rel = y;
+    (x_rel, y_rel)
 }
