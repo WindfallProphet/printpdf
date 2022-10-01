@@ -50,11 +50,9 @@ impl From<Pt> for f64 {
 }
 impl From<Pt> for Mm {
     fn from(value: Pt) -> Mm {
-        Mm(value.0.into())
+        Mm(value.0)
     }
 }
-
-
 
 impl From<Mm> for Pt {
     fn from(value: Mm) -> Pt {
