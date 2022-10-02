@@ -103,7 +103,7 @@ impl<'a> TextMode<'a> {
         self.move_to(pos);
         self.layer.add_operation(ShowText { text: text.into() });
     }
-
+    
     pub fn write_paragraph(
         &self,
         text: &str,
@@ -124,7 +124,7 @@ impl<'a> TextMode<'a> {
         let ff = fontdue::Font::from_bytes(bytes, fontdue::FontSettings::default()).unwrap();
         let line_height: f64 = font_size * 1.5;
 
-        let (mut cur_x, mut cur_y): (f64, f64) = pos;
+        let (mut cur_x, _): (f64, f64) = pos;
 
         //Character Dimensions
         let white_space: f64 = ff.rasterize(' ', size).0.advance_width.into();
@@ -146,10 +146,9 @@ impl<'a> TextMode<'a> {
                     if i == 0 {
                         new_line(&mut line);
                     }
-
                     if !word.is_empty() {
                         let word_width = string_width(word);
-                        if cur_x + word_width < page.width - pos.0 {
+                        if (cur_x + word_width) < (page.width - pos.0) {
                             if word.contains(char::is_whitespace) {
                                 let vc: Vec<char> = word.chars().collect();
                                 let ws_chars: Vec<(usize, char)> = word
@@ -160,24 +159,25 @@ impl<'a> TextMode<'a> {
                                     '\n' | '\r' => {
                                         let (w1, w2) = vc.split_at(*i);
                                         let word1: String = w1.iter().collect();
-                                        let word_length = string_width(&word1);
+                                        let word1_length = string_width(&word1);
                                         let (str, width) = line.last_mut().unwrap();
                                         str.push_str(&word1);
                                         str.push(' ');
-                                        *width += word_length + white_space;
+                                        *width += word1_length + white_space;
                                         new_line(&mut line);
-                                        let word = vc[*i..]
+                                        cur_x = pos.0;
+                                        let word2 = w2
                                             .iter()
                                             .filter(|char| !char.is_whitespace())
                                             .collect::<String>();
-                                        let word_length = string_width(&word);
-                                        if word_length > 0.0 {
+                                        let word2_length = string_width(&word2);
+                                        if word2_length > 0.0 {
                                             let (str, width) = line.last_mut().unwrap();
-                                            str.push_str(&word);
+                                            str.push_str(&word2);
                                             str.push(' ');
-                                            *width += word_length + white_space;
+                                            *width += word2_length + white_space;
+                                            cur_x += word2_length + white_space;
                                         }
-                                        cur_y -= line_height
                                     }
                                     _ => (),
                                 });
@@ -202,7 +202,11 @@ impl<'a> TextMode<'a> {
                                         let mut hyphenated_string: String =
                                             vec_chars[..*u].iter().collect();
                                         let chars_width = string_width(&hyphenated_string);
-                                        if (cur_x + chars_width + hyphen.expect("Hyphenation is disabled")) >= (page.width - pos.0) {
+                                        if (cur_x
+                                            + chars_width
+                                            + hyphen.expect("Hyphenation is disabled"))
+                                            > (page.width - pos.0)
+                                        {
                                             if hyphenated.breaks.len() - (i + 1) == 0 {
                                                 Some((None, word.to_string()))
                                             } else {
@@ -223,13 +227,12 @@ impl<'a> TextMode<'a> {
                                     let string_width = string_width(&string);
                                     let (str, width) = line.last_mut().unwrap();
                                     str.push_str(&string);
-                                    *width += string_width + white_space;
+                                    *width += string_width + hyphen.unwrap();
                                 }
-                                cur_y -= line_height;
-                                cur_x = pos.0;
                                 let remaining = hyphenated_word.1.clone();
                                 let rem_width = string_width(&remaining);
                                 new_line(&mut line);
+                                cur_x = pos.0;
                                 let (str, width) = line.last_mut().unwrap();
                                 *width += rem_width + white_space;
                                 str.push_str(&remaining);
@@ -237,21 +240,20 @@ impl<'a> TextMode<'a> {
                                 cur_x += rem_width + white_space;
                             } else {
                                 cur_x = pos.0;
-                                cur_y -= line_height;
                                 new_line(&mut line);
                                 let (str, width) = line.last_mut().unwrap();
                                 *width += word_width + white_space;
+                                cur_x += word_width + white_space;
                                 str.push_str(word);
                                 str.push(' ');
                             }
                         } else {
                             cur_x = pos.0;
-                            cur_y -= line_height;
                             new_line(&mut line);
                             let (str, width) = line.last_mut().unwrap();
-                            *width += word_width + white_space;
                             str.push_str(word);
                             str.push(' ');
+                            *width += word_width + white_space;
                             cur_x += word_width + white_space;
                         }
                     }
@@ -284,6 +286,7 @@ impl<'a> TextMode<'a> {
                 });
                 let mut just_peek = paragraph.into_iter().peekable();
                 while let Some((line, line_width)) = just_peek.next() {
+                    println!("Line: {}\nWidth:{}", line, line_width);
                     let mut startx = pos.0;
                     if let TextAlignment::Right = alignment {
                         startx = (page.width - pos.0) - (line_width);
