@@ -358,6 +358,7 @@ impl<'a> TextMode<'a> {
         total_width: f64,
         margins: PageMargins,
     ) {
+        //Todo make write_paragraph rely on write_textbox and get rid of redundant code
         //let margins = PageMargins::symmetrical(0.0, pos.0);
         let hyphenation = true;
         let size = font_size as f32;
@@ -454,8 +455,6 @@ impl<'a> TextMode<'a> {
                         }
                     else if !word.is_empty() {
                         let word_width = string_width(word);
-                        println!("{} = {}", word, word_width);
-
                         if (cur_x + word_width) < (total_width - margins.left) {
                             let (str, width) = line.last_mut().unwrap();
                                 *width += word_width + white_space;
