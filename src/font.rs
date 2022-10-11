@@ -151,7 +151,7 @@ impl Into<LoDictionary> for BuiltinFont {
 #[derive(Debug, Clone)]
 pub struct ExternalFont {
     /// Raw font data
-    pub(crate) font_bytes: Vec<u8>,
+    pub font_bytes: Vec<u8>,
     /// Parsed font data
     pub(crate) font_data: Box<dyn FontData>,
     /// Font name, for adding as a resource on the document
