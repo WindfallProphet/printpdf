@@ -146,7 +146,7 @@ impl Color {
 
     /// Consumes the color and converts into into a vector of numbers
     pub fn into_vec(self)
-    -> Vec<f64>
+    -> Vec<f32>
     {
         match self {
             Color::Rgb(rgb) => { vec![rgb.r, rgb.g, rgb.b ]},
@@ -172,15 +172,15 @@ impl Color {
 /// RGB color
 #[derive(Debug, Clone, PartialEq)]
 pub struct Rgb {
-    pub r: f64,
-    pub g: f64,
-    pub b: f64,
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
     pub icc_profile: Option<IccProfileRef>,
 }
 
 impl Rgb {
 
-    pub fn new(r: f64, g: f64, b: f64, icc_profile: Option<IccProfileRef>)
+    pub fn new(r: f32, g: f32, b: f32, icc_profile: Option<IccProfileRef>)
     -> Self
     {
         Self { r, g, b, icc_profile }
@@ -191,16 +191,16 @@ impl Rgb {
 /// CMYK color
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cmyk {
-    pub c: f64,
-    pub m: f64,
-    pub y: f64,
-    pub k: f64,
+    pub c: f32,
+    pub m: f32,
+    pub y: f32,
+    pub k: f32,
     pub icc_profile: Option<IccProfileRef>,
 }
 
 impl Cmyk {
     /// Creates a new CMYK color
-    pub fn new(c: f64, m: f64, y: f64, k: f64, icc_profile: Option<IccProfileRef>)
+    pub fn new(c: f32, m: f32, y: f32, k: f32, icc_profile: Option<IccProfileRef>)
     -> Self
     {
         Self { c, m, y, k, icc_profile }
@@ -210,12 +210,12 @@ impl Cmyk {
 /// Greyscale color
 #[derive(Debug, Clone, PartialEq)]
 pub struct Greyscale {
-    pub percent: f64,
+    pub percent: f32,
     pub icc_profile: Option<IccProfileRef>,
 }
 
 impl Greyscale {
-    pub fn new(percent: f64, icc_profile: Option<IccProfileRef>)
+    pub fn new(percent: f32, icc_profile: Option<IccProfileRef>)
     -> Self
     {
         Self { percent, icc_profile }
@@ -229,14 +229,14 @@ impl Greyscale {
 /// currently they are the same as a CMYK color.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct SpotColor {
-    pub c: f64,
-    pub m: f64,
-    pub y: f64,
-    pub k: f64,
+    pub c: f32,
+    pub m: f32,
+    pub y: f32,
+    pub k: f32,
 }
 
 impl SpotColor {
-    pub fn new(c: f64, m: f64, y: f64, k: f64)
+    pub fn new(c: f32, m: f32, y: f32, k: f32)
     -> Self
     {
         Self { c, m, y, k }

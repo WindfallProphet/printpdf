@@ -335,6 +335,11 @@ pub extern crate log;
 pub extern crate image as image_crate;
 pub extern crate lopdf;
 extern crate owned_ttf_parser;
+extern crate nom;
+extern crate num;
+extern crate half;
+extern crate num_traits;
+
 #[cfg(feature = "svg")]
 extern crate pdf_writer;
 extern crate time;

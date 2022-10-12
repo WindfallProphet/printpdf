@@ -8,7 +8,7 @@ use rayon::str::ParallelString;
 use std::rc::Weak;
 use std::{cell::RefCell, collections::HashMap};
 
-use crate::operation::{PdfOperation, NonNegativePdfNumber, PdfNumber};
+use crate::operation::{NonNegativePdfNumber, PdfNumber, PdfOperation};
 use crate::text::{TextAlignment, TextMode};
 use crate::{
     font, BuiltinFont, DirectFontRef, ExternalFont, FontList, PageDimensions, PageMargins,
@@ -19,7 +19,6 @@ use {
     IndirectFontRef, Line, LineCapStyle, LineDashPattern, LineJoinStyle, PdfColor, PdfDocument,
     TextMatrix, TextRenderingMode, XObject, XObjectRef,
 };
-
 
 /// One layer of PDF data
 #[derive(Debug, Clone)]
@@ -124,7 +123,7 @@ impl PdfLayerReference {
     /// Set the current font, only valid in a `begin_text_section` to
     /// `end_text_section` block
     #[inline]
-    pub fn set_font(&self, font: &IndirectFontRef, font_size: f64) -> () {
+    pub fn set_font(&self, font: &IndirectFontRef, font_size: f32) -> () {
         self.add_operation(Operation::new(
             "Tf",
             vec![font.name.clone().into(), (font_size).into()],
@@ -132,15 +131,14 @@ impl PdfLayerReference {
     }
 
     #[inline]
-    pub fn line_to(&self, start: (f64, f64), end: (f64, f64)) -> () {
+    pub fn line_to(&self, start: (f32, f32), end: (f32, f32)) -> () {
         self.add_operation(PdfOperation::OpenPath { x: PdfNumber::Real(start.0), y: PdfNumber::Real(start.1) },
         );
         self.add_operation(PdfOperation::LineTo { x: PdfNumber::Real(end.0), y: PdfNumber::Real(end.1) },
     );
-    self.add_operation(PdfOperation::ClosePathAndStroke {  })
+    self.add_operation(PdfOperation::CloseAndStroke {  })
 
     }
-
 
     /// Set the current line / outline color for the layer
     #[inline]
@@ -244,7 +242,7 @@ impl PdfLayerReference {
     /// __NOTE__: 0.0 is a special value, it does not make the line disappear, but rather
     /// makes it appear 1px wide across all devices
     #[inline]
-    pub fn set_line_width(&self, line_width: f64) {
+    pub fn set_line_width(&self, line_width: f32) {
         self.add_operation(PdfOperation::SetLineWidth { width: NonNegativePdfNumber::Real(line_width)},
         );
     }
@@ -287,7 +285,7 @@ impl PdfLayerReference {
 
     /// Sets the position where the text should appear in Points
     #[inline]
-    pub fn set_text_cursor(&self, x: f64, y: f64) {
+    pub fn set_text_cursor(&self, x: f32, y: f32) {
         self.add_operation(Operation::new(
             "Td",
             vec![lopdf::Object::Real(x), lopdf::Object::Real(y)],
@@ -306,7 +304,7 @@ impl PdfLayerReference {
     /// Sets the text line height inside a text block
     /// (must be called within `begin_text_block` and `end_text_block`)
     #[inline]
-    pub fn set_line_height(&self, height: f64) {
+    pub fn set_line_height(&self, height: f32) {
         self.add_operation(Operation::new("TL", vec![lopdf::Object::Real(height)]));
     }
 
@@ -314,7 +312,7 @@ impl PdfLayerReference {
     /// Values are given in points. A value of 3 (pt) will increase
     /// the spacing inside a word by 3pt.
     #[inline]
-    pub fn set_character_spacing(&self, spacing: f64) {
+    pub fn set_character_spacing(&self, spacing: f32) {
         self.add_operation(Operation::new("Tc", vec![lopdf::Object::Real(spacing)]));
     }
 
@@ -327,7 +325,7 @@ impl PdfLayerReference {
     /// However, the function itself is valid and _will work_
     /// with builtin fonts.
     #[inline]
-    pub fn set_word_spacing(&self, spacing: f64) {
+    pub fn set_word_spacing(&self, spacing: f32) {
         self.add_operation(Operation::new("Tw", vec![lopdf::Object::Real(spacing)]));
     }
 
@@ -336,7 +334,7 @@ impl PdfLayerReference {
     /// 50 will reduce the width of the written text by half,
     /// but stretch the text
     #[inline]
-    pub fn set_text_scaling(&self, scaling: f64) {
+    pub fn set_text_scaling(&self, scaling: f32) {
         self.add_operation(Operation::new("Tz", vec![lopdf::Object::Real(scaling)]));
     }
 
@@ -346,7 +344,7 @@ impl PdfLayerReference {
     /// number, for subscript, use a negative number. This does not
     /// change the size of the font
     #[inline]
-    pub fn set_line_offset(&self, offset: f64) {
+    pub fn set_line_offset(&self, offset: f32) {
         self.add_operation(Operation::new("Ts", vec![lopdf::Object::Real(offset)]));
     }
 
@@ -392,11 +390,11 @@ impl PdfLayerReference {
         use lopdf::StringFormat::Hexadecimal;
 
         let list = codepoints.into_iter().map(|(pos, codepoint)| {
-            if pos != 0 {
+                if pos != 0 {
                 return Integer(pos)
-            }
-            let bytes = codepoint.to_be_bytes().to_vec();
-            String(bytes, Hexadecimal)
+                }
+                let bytes = codepoint.to_be_bytes().to_vec();
+                String(bytes, Hexadecimal)
         }).collect();
 
         let doc = self.document.upgrade().unwrap();
@@ -531,19 +529,19 @@ impl PdfLayerReference {
                     .layer.push(PdfResource::ReferencedResource(svg_data_index.0.clone()));
         }
     */
-    pub fn path_mode<F>(&self, f: F) 
-        where F: FnOnce(&PathMode) {
-            let pm = PathMode::new(self);
+    pub fn path_mode<Fn>(&self, f: Fn) 
+        where Fn: FnOnce(&PathMode) {
+        let pm = PathMode::new(self);
             f(&pm)
-        }
-    pub fn text_mode<F>(&self, f: F) where F: FnOnce(&TextMode) {
+    }
+    pub fn text_mode<Fn>(&self, f: Fn) where Fn: FnOnce(&TextMode) {
         use self::PdfOperation::{BeginText, EndText};
         self.add_operation(BeginText {  });
         let tm = TextMode::new(self);
         f(&tm);
         self.add_operation(EndText {  });
     }
-    
+
     // internal function to invoke an xobject
     fn internal_invoke_xobject(&self, name: String) {
         let doc = self.document.upgrade().unwrap();
@@ -568,17 +566,17 @@ impl <'a > PathMode <'a> {
     pub(crate) fn new(layer: &'a PdfLayerReference) -> Self {
         Self { layer }
     }
-    
+
     /// Start a new subpath and move the current point for drawing path,
-    pub fn move_to(&self, pos: (f64, f64)) -> ()
+    pub fn move_to(&self, pos: (f32, f32)) -> ()
     {
        self.layer.add_operation(PdfOperation::OpenPath { x: PdfNumber::Real(pos.0), y: PdfNumber::Real(pos.1) })
-      
+
     }
-    pub fn line_to(&self, pos: (f64, f64)) {
+    pub fn line_to(&self, pos: (f32, f32)) {
         self.layer.add_operation(PdfOperation::LineTo { x: PdfNumber::Real(pos.0), y: PdfNumber::Real(pos.1) })
     }
     pub fn close_path_and_stroke(&self) {
-        self.layer.add_operation(PdfOperation::ClosePathAndStroke {  })
+        self.layer.add_operation(PdfOperation::CloseAndStroke {  })
     }
 }

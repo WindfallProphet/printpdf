@@ -176,7 +176,7 @@ impl Into<lopdf::content::Operation> for PdfOperation {
 #[derive(Debug, Clone, Copy)]
 pub enum PdfNumber {
     Integer(i64),
-    Real(f64),
+    Real(f32),
 }
 
 impl Into<lopdf::Object> for PdfNumber {
@@ -195,8 +195,8 @@ impl From<i64> for PdfNumber {
     }
 }
 
-impl From<f64> for PdfNumber {
-    fn from(r: f64) -> Self {
+impl From<f32> for PdfNumber {
+    fn from(r: f32) -> Self {
         Self::Real(r)
     }
 }
@@ -237,10 +237,10 @@ impl<'a> From<&'a str> for PdfString {
 
 #[derive(Debug, Clone, Copy)]
 // strictly in range [0..1]
-pub struct Percentage(f64);
+pub struct Percentage(f32);
 
 impl Percentage {
-    pub fn new(r: f64) -> Self {
+    pub fn new(r: f32) -> Self {
         assert!(r >= 0.);
         assert!(r <= 1.);
         Self(r)
@@ -256,7 +256,7 @@ impl Into<lopdf::Object> for Percentage {
 #[derive(Debug, Clone, Copy)]
 pub enum NonNegativePdfNumber {
     Integer(i64),
-    Real(f64),
+    Real(f32),
 }
 
 impl NonNegativePdfNumber {
@@ -265,7 +265,7 @@ impl NonNegativePdfNumber {
         Self::Integer(i)
     }
 
-    pub fn new_real(r: f64) -> Self {
+    pub fn new_real(r: f32) -> Self {
         assert!(r >= 0.);
         Self::Real(r)
     }

@@ -19,8 +19,8 @@ pub enum PaperSize {
 }
 
 pub struct PageDimensions {
-    pub width: f64,
-    pub height: f64,
+    pub width: f32,
+    pub height: f32,
 }
 
 impl PaperSize {
@@ -42,9 +42,9 @@ pub struct PdfPage {
     /// The index of the page in the document
     pub(crate) index: usize,
     /// page width in point
-    pub width: f64,
+    pub width: f32,
     /// page height in point
-    pub height: f64,
+    pub height: f32,
     /// Page layers
     pub layers: Vec<PdfLayer>,
     /// Resources used in this page
@@ -65,8 +65,8 @@ impl PdfPage {
     /// Page must contain at least one layer
     #[inline]
     pub fn new<S>(
-        width: f64,
-        height: f64,
+        width: f32,
+        height: f32,
         layer_name: S,
         page_index: usize,
     ) -> (Self, PdfLayerIndex)

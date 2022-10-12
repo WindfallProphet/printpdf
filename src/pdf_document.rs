@@ -45,14 +45,14 @@ pub struct PdfDocumentReference {
 }
 #[derive(Debug, Clone)]
 pub struct PageMargins {
-    pub top: f64,
-    pub right: f64,
-    pub bottom: f64,
-    pub left: f64,
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+    pub left: f32,
 }
 
 impl PageMargins {
-    pub fn new(top: f64, right: f64, bottom: f64, left: f64) -> Self {
+    pub fn new(top: f32, right: f32, bottom: f32, left: f32) -> Self {
         PageMargins {
             top,
             right,
@@ -60,7 +60,7 @@ impl PageMargins {
             left,
         }
     }
-    pub fn symmetrical(vertical: f64, horizontal: f64) -> Self {
+    pub fn symmetrical(vertical: f32, horizontal: f32) -> Self {
         PageMargins {
             top: vertical,
             right: horizontal,
@@ -84,8 +84,8 @@ impl PdfDocument {
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::new_ret_no_self))]
     pub fn new<S1, S2>(
         document_title: S1,
-        initial_page_width: f64,
-        initial_page_height: f64,
+        initial_page_width: f32,
+        initial_page_height: f32,
         initial_layer_name: S2,
     ) -> (PdfDocumentReference, PdfPageIndex, PdfLayerIndex)
     where
@@ -299,7 +299,7 @@ impl PdfDocumentReference {
 
     /// Create a new pdf page and returns the index of the page
     #[inline]
-    pub fn add_page<S>(&self, x: f64, y: f64, inital_layer_name: S) -> (PdfPageIndex, PdfLayerIndex)
+    pub fn add_page<S>(&self, x: f32, y: f32, inital_layer_name: S) -> (PdfPageIndex, PdfLayerIndex)
     where
         S: Into<String>,
     {
