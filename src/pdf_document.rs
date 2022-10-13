@@ -8,6 +8,7 @@ use std::rc::Rc;
 use utils::random_character_string_32;
 
 use crate::OffsetDateTime;
+use crate::Pt;
 use lopdf;
 
 use indices::*;
@@ -82,15 +83,16 @@ impl PdfDocument {
     /// Creates a new PDF document
     #[inline]
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::new_ret_no_self))]
-    pub fn new<S1, S2>(
+    pub fn new<S1, S2, P>(
         document_title: S1,
-        initial_page_width: f32,
-        initial_page_height: f32,
+        initial_page_width: P,
+        initial_page_height: P,
         initial_layer_name: S2,
     ) -> (PdfDocumentReference, PdfPageIndex, PdfLayerIndex)
     where
         S1: Into<String>,
         S2: Into<String>,
+        P: Into<Pt>
     {
         let doc = Self {
             pages: Vec::new(),
@@ -299,9 +301,10 @@ impl PdfDocumentReference {
 
     /// Create a new pdf page and returns the index of the page
     #[inline]
-    pub fn add_page<S>(&self, x: f32, y: f32, inital_layer_name: S) -> (PdfPageIndex, PdfLayerIndex)
+    pub fn add_page<S, P>(&self, x: P, y: P, inital_layer_name: S) -> (PdfPageIndex, PdfLayerIndex)
     where
         S: Into<String>,
+        P: Into<Pt>
     {
         let mut doc = self.document.borrow_mut();
         let (pdf_page, pdf_layer_index) = PdfPage::new(x, y, inital_layer_name, doc.pages.len());

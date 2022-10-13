@@ -19,9 +19,10 @@ pub enum PaperSize {
 }
 
 pub struct PageDimensions {
-    pub width: f32,
-    pub height: f32,
+    pub width: Pt,
+    pub height: Pt,
 }
+
 
 impl PaperSize {
     pub fn dimensions(self) -> PageDimensions {
@@ -29,8 +30,8 @@ impl PaperSize {
             PaperSize::Letter => todo!(),
             PaperSize::Legal => todo!(),
             PaperSize::A4 => PageDimensions {
-                width: 595.0,
-                height: 842.0,
+                width: Pt(595.0),
+                height: Pt(842.0),
             },
         }
     }
@@ -42,9 +43,9 @@ pub struct PdfPage {
     /// The index of the page in the document
     pub(crate) index: usize,
     /// page width in point
-    pub width: f32,
+    pub width: Pt,
     /// page height in point
-    pub height: f32,
+    pub height: Pt,
     /// Page layers
     pub layers: Vec<PdfLayer>,
     /// Resources used in this page
@@ -64,19 +65,20 @@ impl PdfPage {
     /// Create a new page, notice that width / height are in millimeter.
     /// Page must contain at least one layer
     #[inline]
-    pub fn new<S>(
-        width: f32,
-        height: f32,
+    pub fn new<S, P>(
+        width: P,
+        height: P,
         layer_name: S,
         page_index: usize,
     ) -> (Self, PdfLayerIndex)
     where
         S: Into<String>,
+        P: Into<Pt>
     {
         let mut page = Self {
             index: page_index,
-            width,
-            height,
+            width: width.into(),
+            height: height.into(),
             layers: Vec::new(),
             resources: PdfResources::new(),
         };
