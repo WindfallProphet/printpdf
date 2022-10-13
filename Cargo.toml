@@ -14,7 +14,7 @@ autoexamples = false
 
 [dependencies]
 # minimum dependencies
-lopdf = { version = "0.27.0", default-features = false, features = ["pom_parser"] }
+lopdf = { git = "https://github.com/WindfallProphet/lopdf", default-features = false, features = ["pom_parser"] }
 owned_ttf_parser = { version = "0.12", default-features = false }
 time = { version = "0.3.14", default-features = false, features = ["std"] }
 # optional: logging
@@ -30,6 +30,8 @@ rayon = "1.5.3"
 fontdue = "0.7.2"
 hyphenation = {version = "0.8.4", features = ["embed_all"]}
 encoding = "0.2.33"
+nom = "7.1.1"
+num-traits = "0.2.15"
 
 [features]
 default = []
