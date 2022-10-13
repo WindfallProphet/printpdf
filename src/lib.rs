@@ -336,8 +336,6 @@ pub extern crate image as image_crate;
 pub extern crate lopdf;
 extern crate owned_ttf_parser;
 extern crate nom;
-extern crate num;
-extern crate half;
 extern crate num_traits;
 
 #[cfg(feature = "svg")]
@@ -362,6 +360,7 @@ pub mod indices;
 pub mod line;
 pub mod ocg;
 pub mod pattern;
+pub mod path;
 pub mod pdf_conformance;
 pub mod pdf_document;
 pub mod pdf_layer;
