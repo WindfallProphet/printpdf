@@ -9,6 +9,7 @@ use std::rc::Weak;
 use std::{cell::RefCell, collections::HashMap};
 
 use crate::operation::{NonNegativePdfNumber, PdfNumber, PdfOperation};
+use crate::path::PathMode;
 use crate::text::{TextAlignment, TextMode};
 use crate::{
     font, BuiltinFont, DirectFontRef, ExternalFont, FontList, PageDimensions, PageMargins,
@@ -556,27 +557,4 @@ impl PdfLayerReference {
             ));
     }
 
-}
-/// Page object in Path mode.
-pub struct PathMode <'a> {
-    layer: &'a PdfLayerReference,
-}
-
-impl <'a > PathMode <'a> {
-    pub(crate) fn new(layer: &'a PdfLayerReference) -> Self {
-        Self { layer }
-    }
-
-    /// Start a new subpath and move the current point for drawing path,
-    pub fn move_to(&self, pos: (f32, f32)) -> ()
-    {
-       self.layer.add_operation(PdfOperation::OpenPath { x: PdfNumber::Real(pos.0), y: PdfNumber::Real(pos.1) })
-
-    }
-    pub fn line_to(&self, pos: (f32, f32)) {
-        self.layer.add_operation(PdfOperation::LineTo { x: PdfNumber::Real(pos.0), y: PdfNumber::Real(pos.1) })
-    }
-    pub fn close_path_and_stroke(&self) {
-        self.layer.add_operation(PdfOperation::CloseAndStroke {  })
-    }
 }
