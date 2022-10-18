@@ -3,7 +3,7 @@
 
 /// Index of the page (0-based)
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct PdfPageIndex(pub(crate) usize);
+pub struct PdfPageIndex(pub usize);
 /// Index of the layer on the nth page
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct PdfLayerIndex(pub(crate) usize);
